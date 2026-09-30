@@ -1,6 +1,8 @@
 """Real-rsync integration tests; all temporary writes stay in the workspace."""
 
 from datetime import datetime, timezone
+from contextlib import chdir, redirect_stdout
+import io
 import json
 import logging
 import os
@@ -18,7 +20,8 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from synctoceph.config import Settings, SyncError, daily_time, interval_seconds, load_config
+from synctoceph.config import DEFAULT_DEST, DEFAULT_SOURCE, Settings, SyncError, daily_time, interval_seconds, load_config
+from synctoceph.cli import background, main
 from synctoceph.engine import Control, execute, rsync_command, snapshot, sync, verify
 from synctoceph.scheduler import next_daily
 from synctoceph.state import Lock, Store, identity, signal_process
@@ -41,7 +44,7 @@ class WorkspaceTest(unittest.TestCase):
 
     def cli(self, *args, expected=0):
         result = subprocess.run([sys.executable, str(ROOT / "syncToCeph"), "--state-dir", str(self.state), *args],
-                                cwd=ROOT, capture_output=True, text=True, timeout=15)
+                                cwd=self.root, capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
 
@@ -68,7 +71,7 @@ class LauncherTests(WorkspaceTest):
                                 cwd=self.root, env=env, capture_output=True,
                                 text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("{run,schedule,status,stop,logs}", result.stdout)
+        self.assertIn("{run,schedule,status,stop,logs,config}", result.stdout)
         self.assertFalse((self.root / ".synctoceph-state").exists())
 
 
@@ -325,6 +328,145 @@ class ProcessTests(WorkspaceTest):
         with Lock(self.state / "job.lock"):
             self.assertEqual(self.status()["state"], "orphaned")
             self.cli("stop", expected=1)
+
+
+class DirectoryConfigurationTests(WorkspaceTest):
+    def config_show(self, *args):
+        return json.loads(self.cli("config", "show", "--json", *args).stdout)
+
+    def init_config(self):
+        self.cli("config", "init", "--source", str(self.source), "--dest", str(self.dest))
+        return self.root / "syncToCeph.toml"
+
+    def test_show_defaults_and_derived_paths_without_writes(self):
+        before = set(self.root.iterdir())
+        data = self.config_show()
+        self.assertIsNone(data["config_file"])
+        self.assertEqual(data["source"], DEFAULT_SOURCE)
+        self.assertEqual(data["dest"], DEFAULT_DEST)
+        self.assertEqual(data["require_mount"], "/mnt/ceph")
+        self.assertEqual(data["log_file"], str(self.state / "sync.log"))
+        self.assertEqual(data["history_dir"], DEFAULT_DEST + "/.syncToCeph/history")
+        self.assertEqual(set(self.root.iterdir()), before)
+        self.assertIn("Derived paths", self.cli("config", "show").stdout)
+
+    def test_init_set_and_automatic_loading_by_run_and_monitoring(self):
+        path = self.init_config()
+        self.assertEqual(self.config_show()["config_file"], str(path))
+        self.assertIsNone(self.config_show()["require_mount"])
+        new_source = self.root / 'source with spaces "雪😀"'
+        new_source.mkdir()
+        (new_source / "file").write_text("preview")
+        self.cli("config", "set", "source", str(new_source))
+        self.cli("config", "set", "dry_run", "true")
+        with chdir(self.root), patch("synctoceph.cli.run_controller", return_value=0) as run:
+            self.assertEqual(main(["run"]), 0)
+            settings = run.call_args.args[0]
+            self.assertEqual(settings.source, new_source)
+            self.assertEqual(settings.dest, self.dest)
+            self.assertEqual(settings.state_dir, self.state)
+            self.assertTrue(settings.dry_run)
+        with chdir(self.root), patch("synctoceph.cli.show_status", return_value=0) as status:
+            self.assertEqual(main(["status"]), 0)
+            self.assertEqual(status.call_args.args[0].directory, self.state)
+        self.assertEqual(list(self.dest.iterdir()), [])
+        self.assertEqual(load_config(path)["source"], str(new_source))
+        self.assertEqual(self.config_show()["source"], str(new_source))
+
+    def test_config_precedence_and_state_environment(self):
+        path = self.init_config()
+        explicit = self.root / "explicit.toml"
+        explicit.write_text(f'source = "{self.root / "explicit-source"}"\n')
+        data = self.config_show("--config", str(explicit))
+        self.assertEqual(data["source"], str(self.root / "explicit-source"))
+        self.assertEqual(data["dest"], DEFAULT_DEST)
+        data = self.config_show("--source", str(self.root / "override"))
+        self.assertEqual(data["source"], str(self.root / "override"))
+        env = dict(os.environ, SYNCTOCEPH_STATE_DIR=str(self.root / "env-state"))
+        def show(*args):
+            result = subprocess.run([sys.executable, str(ROOT / "syncToCeph"), "config", "show", "--json", *args],
+                                    cwd=self.root, env=env, capture_output=True, text=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return json.loads(result.stdout)
+        self.assertEqual(show()["state_dir"], str(self.state))
+        self.assertEqual(show("--config", str(explicit))["state_dir"], env["SYNCTOCEPH_STATE_DIR"])
+        self.assertEqual(show("--state-dir", str(self.root / "override"))["state_dir"], str(self.root / "override"))
+        self.assertTrue(path.exists())
+
+    def test_updates_validate_before_replacing_and_init_never_overwrites(self):
+        path = self.init_config()
+        before = path.read_bytes()
+        for key, value in (("source", str(self.dest / "nested")), ("source", ""),
+                           ("dry_run", "yes"), ("interval", "0s"), ("at", "24:00")):
+            with self.subTest(key=key, value=value):
+                self.cli("config", "set", key, value, expected=1)
+                self.assertEqual(path.read_bytes(), before)
+        self.cli("config", "init", expected=1)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse(self.state.exists())
+
+    def test_relative_paths_are_saved_absolute_and_schedule_values_preserved(self):
+        path = self.init_config()
+        self.cli("config", "set", "source", "relative source")
+        self.cli("config", "set", "interval", "4h")
+        self.cli("config", "set", "state_dir", "new-state")
+        data = load_config(path)
+        self.assertEqual(data["source"], str(self.root / "relative source"))
+        self.assertEqual(data["state_dir"], str(self.root / "new-state"))
+        self.assertEqual(data["interval"], "4h")
+        self.cli("config", "set", "at", "02:00")
+        data = load_config(path)
+        self.assertNotIn("interval", data)
+        self.assertEqual(data["at"], "02:00")
+
+    def test_explicit_init_and_mount_guard_follow_destination(self):
+        path = self.root / "custom.toml"
+        self.cli("--config", str(path), "config", "init")
+        self.assertFalse((self.root / "syncToCeph.toml").exists())
+        self.assertEqual(self.config_show("--config", str(path))["require_mount"], "/mnt/ceph")
+        self.cli("config", "set", "dest", str(self.dest), "--config", str(path))
+        self.assertIsNone(self.config_show("--config", str(path))["require_mount"])
+        self.cli("config", "set", "require_mount", str(self.root), "--config", str(path))
+        self.assertEqual(self.config_show("--config", str(path))["require_mount"], str(self.root))
+        self.cli("config", "set", "require_mount", "", "--config", str(path))
+        self.assertIsNone(self.config_show("--config", str(path))["require_mount"])
+
+    def test_missing_invalid_and_symlink_configs(self):
+        self.cli("config", "set", "source", str(self.source), expected=1)
+        path = self.root / "syncToCeph.toml"
+        path.write_text("unknown = true\n")
+        self.cli("config", "show", expected=1)
+        self.cli("config", "init", expected=1)
+        self.assertEqual(path.read_text(), "unknown = true\n")
+        path.unlink()
+        target = self.root / "target.toml"
+        target.write_text("dry_run = true\n")
+        path.symlink_to(target)
+        self.cli("config", "set", "dry_run", "false", expected=1)
+        self.assertEqual(target.read_text(), "dry_run = true\n")
+        self.cli("config", "show", "--config", str(self.root / "missing.toml"), expected=1)
+
+    def test_config_commands_do_not_resolve_data_mounts(self):
+        with chdir(self.root), redirect_stdout(io.StringIO()), patch.object(
+                Path, "resolve", side_effect=AssertionError("must not access data mounts")):
+            self.assertEqual(main(["config", "init"]), 0)
+            self.assertEqual(main(["config", "show"]), 0)
+            self.assertEqual(main(["config", "set", "dest", str(self.dest)]), 0)
+
+    def test_detached_child_keeps_resolved_settings_instead_of_local_config(self):
+        self.init_config()
+        self.cli("config", "set", "dry_run", "true")
+        self.cli("config", "set", "require_mount", str(self.root))
+        self.state.mkdir()
+        with chdir(self.root), patch("synctoceph.cli.Store.prepare"), patch(
+                "synctoceph.cli.subprocess.Popen", side_effect=OSError("test spawn boundary")) as spawn:
+            with self.assertRaisesRegex(OSError, "test spawn boundary"):
+                background(self.settings, 3600, None, False)
+            child_args = spawn.call_args.args[0][4:]
+        with chdir(self.root), patch("synctoceph.cli.run_controller", return_value=0) as run:
+            self.assertEqual(main(child_args), 0)
+            self.assertEqual(run.call_args.args[0], self.settings)
+            self.assertEqual(run.call_args.kwargs["interval"], 3600)
 
 
 class ConfigurationTests(WorkspaceTest):

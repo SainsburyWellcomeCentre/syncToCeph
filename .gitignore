@@ -6,3 +6,4 @@ build/
 dist/
 .synctoceph-state/
 .test-tmp/
+/syncToCeph.toml

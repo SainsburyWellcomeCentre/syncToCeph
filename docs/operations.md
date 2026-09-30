@@ -1,6 +1,8 @@
 # Operations reference
 
 For requirements, installation, and common commands, see the [README](../README.md).
+For viewing and saving directory defaults, see
+[directory configuration](../README.md#view-and-change-directory-defaults).
 
 ## Services and cron
 
@@ -64,6 +66,14 @@ does not cover later changes or storage failure; durability depends on the
 underlying filesystem and storage configuration.
 
 ## State and logs
+
+`config show` displays the effective source, destination, state directory, mount
+guard, and derived paths below. It reads `./syncToCeph.toml` when present, or the
+file selected by `--config`. Services should use an absolute `--config` path.
+This view describes future commands; an existing scheduler keeps its startup
+settings until restarted. Before changing `state_dir`, stop the scheduler using
+its current state directory. Changing settings does not move existing logs,
+status, archived data, or history.
 
 ```text
 STATE_DIR/

@@ -4,6 +4,9 @@ Copy files to a locally mounted Ceph archive using rsync. Files removed from the
 source remain in the destination. Replaced destination files are retained in
 version history. Completed transfers are checked with SHA-256.
 
+Start with [viewing and changing directory defaults](#view-and-change-directory-defaults)
+to choose your source, archive, and state/log locations.
+
 ## Requirements
 
 | Component | Requirement |
@@ -32,6 +35,7 @@ From the project directory:
 
 ```bash
 ./syncToCeph --help
+./syncToCeph config show
 ./syncToCeph run --dry-run
 ./syncToCeph run
 ./syncToCeph status
@@ -44,15 +48,68 @@ Neither pip nor a virtual environment is required for direct execution.
 The package lives in `src/synctoceph` to avoid a name collision with the
 `syncToCeph` launcher on case-insensitive filesystems.
 
-Defaults:
+## View and change directory defaults
 
-| Setting | Path |
-| --- | --- |
-| Source | `/mnt/d/luminoseData` |
-| Destination | `/mnt/ceph/LuminoseFM/LuminoseDataCeph` |
-| State and logs | `.synctoceph-state` in the current working directory |
+From the project directory, inspect the settings that the next command will use:
 
-Override the data paths when needed:
+```bash
+./syncToCeph config show
+```
+
+This shows the loaded config file, absolute paths, whether each setting comes
+from a flag, the config file, an environment variable, or a built-in default,
+and derived log/history locations. It does not start a transfer, create data or
+state directories, or require the source and destination to be mounted.
+Use `config show --json` for machine-readable output.
+
+Without a config file or overrides, the defaults are:
+
+| Setting | Default | How to change it |
+| --- | --- | --- |
+| `source` | `/mnt/d/luminoseData` | `config set source /your/source` |
+| `dest` | `/mnt/ceph/LuminoseFM/LuminoseDataCeph` | `config set dest /your/archive` |
+| `state_dir` | `.synctoceph-state` in the current working directory | `config set state_dir /your/state` |
+| `require_mount` | `/mnt/ceph` for the built-in destination; none for custom destinations | `config set require_mount /your/mount` |
+
+Create your local defaults file once, then change the paths. Replace the example
+paths below with your own; quote paths containing spaces:
+
+```bash
+./syncToCeph config init
+./syncToCeph config set source "/data/my source"
+./syncToCeph config set dest /data/archive
+./syncToCeph config set state_dir /home/your-user/synctoceph-state
+./syncToCeph config show
+./syncToCeph run --dry-run
+```
+
+`config init` creates **`syncToCeph.toml` in your current working directory** and
+refuses to overwrite an existing file. Every command automatically loads that file
+when present. You can also open it in any text editor. There is no need to edit
+Python source. The repository ignores this local settings file.
+
+To set all directories at creation time:
+
+```bash
+./syncToCeph config init --source /data/source --dest /data/archive --state-dir /home/your-user/synctoceph-state
+```
+
+`config init` and directory changes through `config set` save absolute paths.
+`config set` preserves the other settings but rewrites TOML formatting and comments.
+These commands save settings without moving files or creating source, destination,
+or state directories. Restart a running scheduler for changes to take effect.
+If changing `state_dir`, stop the old scheduler using its old state directory first;
+existing status and logs stay there.
+
+Other paths follow your selected directories:
+
+| Files | Location | How to change the location |
+| --- | --- | --- |
+| Status, logs, background startup log | `STATE_DIR/status.json`, `sync.log`, `startup.log` | Change `state_dir` |
+| Previous file versions | `DEST/.syncToCeph/history/<run-id>/` | Follows `dest`; no separate setting |
+| Unfinished transfers | `.syncToCeph-partial/` inside destination subdirectories | Follows `dest`; no separate setting |
+
+For a one-command override that does not change saved defaults:
 
 ```bash
 ./syncToCeph run --source /data/source --dest /data/archive --dry-run
@@ -62,24 +119,29 @@ Both directories must already exist. For the default destination, `/mnt/ceph`
 must be mounted. For a custom destination, add `--require-mount /mount/path`
 when a mount check is needed. This option checks that the path is a mount point
 containing the destination; it does not check the filesystem type.
+To save a mount check, use `config set require_mount /mount/path`. An empty value
+(`config set require_mount ""`) restores automatic behavior: `/mnt/ceph` for the
+built-in destination, no guard for other destinations.
 
 ### Run from another directory
 
-Use the launcher's absolute path and a fixed state directory. Replace
+Use the launcher's absolute path and your config file's absolute path. Replace
 `/path/to/syncToCeph` with your project directory:
 
 ```bash
-/path/to/syncToCeph/syncToCeph run --state-dir /path/to/syncToCeph/.synctoceph-state
-/path/to/syncToCeph/syncToCeph status --state-dir /path/to/syncToCeph/.synctoceph-state
+/path/to/syncToCeph/syncToCeph --config /path/to/syncToCeph/syncToCeph.toml run
+/path/to/syncToCeph/syncToCeph --config /path/to/syncToCeph/syncToCeph.toml status
 ```
 
 Use the same state directory for `run`, `schedule`, `status`, `logs`, and `stop`.
 The executable's location does not determine the default state directory.
+Automatic config discovery also uses the working directory, not the executable's
+directory. Use `--config` when launching from elsewhere.
 An absolute `SYNCTOCEPH_STATE_DIR` environment variable can replace repeated
 `--state-dir` options. Uninstalled `python3 -m synctoceph` requires the project
 on Python's import path; set `PYTHONPATH` to the project's `src` directory.
 
-### Optional virtual environment installation
+## Optional virtual environment installation
 
 From the project directory:
 
@@ -120,6 +182,9 @@ and pip's [local installation reference](https://pip.pypa.io/en/stable/topics/lo
 | `status` | `--json` | Show PID, phase, last run, byte counts, recent exit codes, next run |
 | `logs` | `--lines N` / `-n N` (default 100) | Show recent logs |
 | `stop` | `--timeout SECONDS` (default 45) | Request shutdown and wait |
+| `config show` | `--json`, `--source`, `--dest`, `--require-mount` | View effective defaults and derived paths without a transfer |
+| `config init` | `--source`, `--dest`, `--require-mount` | Create a defaults file; refuses to overwrite |
+| `config set KEY VALUE` | Keys listed in Configuration below | Save a setting in an existing file |
 
 Choose one schedule:
 
@@ -163,15 +228,33 @@ For services, cron, and restart behavior, see [operations](docs/operations.md#se
 ./syncToCeph --config examples/syncToCeph.toml status
 ```
 
-Configuration is loaded only with `--config`. CLI values override TOML values;
+Without `--config`, commands load `./syncToCeph.toml` if it exists; otherwise they
+use built-in defaults. `--config FILE` selects a different file instead of the local
+file; a missing explicit file is an error. To create another profile, use
+`./syncToCeph --config /path/to/profile.toml config init` (its parent must exist).
+Use that same `--config` with `config show`, `config set`, and job commands.
+
+CLI values override TOML values;
 a CLI timing option replaces the configured schedule. Unknown keys and incorrect
 types are errors. State-directory precedence is CLI, TOML,
 `SYNCTOCEPH_STATE_DIR`, then the default.
 
+Supported keys are `source`, `dest`, `state_dir`, `require_mount`, `interval`,
+`at`, and `dry_run`. For example:
+
+```bash
+./syncToCeph config set interval 4h
+./syncToCeph config set dry_run true
+./syncToCeph config show
+```
+
+Setting `interval` removes a saved `at`, and setting `at` removes a saved `interval`.
+The `dry_run` value accepts `true` or `false`.
+
 All relative paths, including those inside TOML files, resolve from the working
 directory. Absolute paths give consistent behavior across terminals and services.
-To disable a configured `dry_run = true`, edit the setting; there is no
-`--no-dry-run` option.
+To disable a configured `dry_run = true`, use `config set dry_run false` or edit
+the setting; there is no `--no-dry-run` option.
 
 ## Transfer behavior
 

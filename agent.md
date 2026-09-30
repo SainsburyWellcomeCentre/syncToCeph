@@ -70,9 +70,25 @@ Monitoring commands must use the same state directory as the controller.
 
 Default source: `/mnt/d/luminoseData`. Default destination:
 `/mnt/ceph/LuminoseFM/LuminoseDataCeph`, guarded by the `/mnt/ceph` mount point.
-State defaults to the working directory's `.synctoceph-state`; CLI, explicit TOML,
-and `SYNCTOCEPH_STATE_DIR` can override it. Config paths resolve from the working
-directory. A state directory owns one controller; a destination owns one writer.
+State defaults to the working directory's `.synctoceph-state`; CLI, TOML,
+and `SYNCTOCEPH_STATE_DIR` can override it. Commands automatically load
+`./syncToCeph.toml` when present; `--config FILE` selects a different file instead.
+Config paths resolve from the working directory. A state directory owns one
+controller; a destination owns one writer.
+
+`config show [--json]` reports effective settings and derived paths without
+accessing data mounts or creating state. `config init` creates a local defaults
+file (or the explicit `--config` target) without overwriting. It accepts directory
+flags and saves absolute paths. `config set KEY VALUE` updates an existing file
+atomically, preserving settings but rewriting formatting/comments. Directory
+values are saved absolute. Empty `require_mount` selects the automatic default;
+it does not disable the built-in destination's guard. Setting `interval` or `at`
+removes the other schedule. Config writes check lexical path separation; transfer
+startup still checks resolved paths. Changes apply to newly started commands;
+running schedulers retain startup settings. Stop using the old state directory
+before changing it. Config commands do not move data or logs. Detached children
+receive resolved arguments and an explicit empty config so they cannot reload
+unrelated local defaults.
 
 `status.json` stores process identity, controller phase, next execution, last
 verified success, up to 20 recent results, and cumulative logical transferred bytes.
