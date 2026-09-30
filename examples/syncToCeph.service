@@ -1,0 +1,24 @@
+# Set the service user and absolute paths before deployment.
+# For a virtual environment, use its bin/syncToCeph as the ExecStart executable.
+[Unit]
+Description=Verified additive syncToCeph archive scheduler
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/mnt/ceph
+
+[Service]
+Type=simple
+User=YOUR_SERVICE_USER
+WorkingDirectory=/absolute/path/to/syncToCeph
+Environment=TZ=Europe/London
+ExecStart=/absolute/path/to/syncToCeph/syncToCeph --config /absolute/path/to/syncToCeph/examples/syncToCeph.toml schedule --immediate
+Restart=on-failure
+RestartSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

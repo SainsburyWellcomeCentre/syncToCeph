@@ -1,0 +1,12 @@
+# Relative paths resolve from the working directory.
+source = "/mnt/d/luminoseData"
+dest = "/mnt/ceph/LuminoseFM/LuminoseDataCeph"
+# Use an absolute path when sharing this config across working directories.
+state_dir = ".synctoceph-state"
+require_mount = "/mnt/ceph"
+dry_run = false
+
+# Configure at most one schedule; schedule requires a CLI or configured value.
+# CLI --at or --interval overrides the configured schedule.
+interval = "4h"
+# at = "02:00"

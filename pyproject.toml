@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "syncToCeph"
+version = "0.1.0"
+description = "Verified, additive rsync archives with scheduling and process management"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: POSIX :: Linux",
+]
+
+[project.scripts]
+syncToCeph = "synctoceph.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["synctoceph*"]
