@@ -38,9 +38,11 @@ From the project directory:
 ```
 
 The launcher uses `python3` from `PATH`. You can also run
-`python3 -m synctoceph` from the project directory, or select an installed
+`PYTHONPATH=src python3 -m synctoceph` from the project directory, or select an installed
 interpreter explicitly, for example `python3.11 ./syncToCeph --help`.
 Neither pip nor a virtual environment is required for direct execution.
+The package lives in `src/synctoceph` to avoid a name collision with the
+`syncToCeph` launcher on case-insensitive filesystems.
 
 Defaults:
 
@@ -75,7 +77,7 @@ Use the same state directory for `run`, `schedule`, `status`, `logs`, and `stop`
 The executable's location does not determine the default state directory.
 An absolute `SYNCTOCEPH_STATE_DIR` environment variable can replace repeated
 `--state-dir` options. Uninstalled `python3 -m synctoceph` requires the project
-on Python's import path; running from the project directory provides that.
+on Python's import path; set `PYTHONPATH` to the project's `src` directory.
 
 ### Optional virtual environment installation
 

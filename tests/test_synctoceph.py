@@ -15,12 +15,14 @@ import unittest
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
 from synctoceph.config import Settings, SyncError, daily_time, interval_seconds, load_config
 from synctoceph.engine import Control, execute, rsync_command, snapshot, sync, verify
 from synctoceph.scheduler import next_daily
 from synctoceph.state import Lock, Store, identity, signal_process
 
-ROOT = Path(__file__).resolve().parents[1]
 TEMP = ROOT / ".test-tmp"
 TEMP.mkdir(exist_ok=True)
 
@@ -38,7 +40,7 @@ class WorkspaceTest(unittest.TestCase):
         self.settings = Settings(self.source, self.dest, self.state)
 
     def cli(self, *args, expected=0):
-        result = subprocess.run([sys.executable, "-m", "synctoceph", "--state-dir", str(self.state), *args],
+        result = subprocess.run([sys.executable, str(ROOT / "syncToCeph"), "--state-dir", str(self.state), *args],
                                 cwd=ROOT, capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
@@ -56,6 +58,18 @@ class WorkspaceTest(unittest.TestCase):
                 return
             time.sleep(0.05)
         self.fail("condition was not met before timeout")
+
+
+class LauncherTests(WorkspaceTest):
+    def test_help_from_another_directory_without_pythonpath(self):
+        env = dict(os.environ)
+        env.pop("PYTHONPATH", None)
+        result = subprocess.run([sys.executable, str(ROOT / "syncToCeph"), "--help"],
+                                cwd=self.root, env=env, capture_output=True,
+                                text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("{run,schedule,status,stop,logs}", result.stdout)
+        self.assertFalse((self.root / ".synctoceph-state").exists())
 
 
 class TransferTests(WorkspaceTest):
@@ -239,7 +253,7 @@ class ProcessTests(WorkspaceTest):
         self.cli("stop")
 
     def test_sigterm_while_waiting(self):
-        process = subprocess.Popen([sys.executable, "-m", "synctoceph", "--state-dir", str(self.state),
+        process = subprocess.Popen([sys.executable, str(ROOT / "syncToCeph"), "--state-dir", str(self.state),
                                     *self.scheduler_args("--at", "02:00")],
                                    cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
@@ -267,7 +281,7 @@ class ProcessTests(WorkspaceTest):
         fake.chmod(0o755)
         (self.dest / "existing").write_text("keep")
         env = dict(os.environ, PATH=str(scripts) + os.pathsep + os.environ["PATH"])
-        process = subprocess.Popen([sys.executable, "-m", "synctoceph", "--state-dir", str(self.state),
+        process = subprocess.Popen([sys.executable, str(ROOT / "syncToCeph"), "--state-dir", str(self.state),
                                     "run", "--source", str(self.source), "--dest", str(self.dest)],
                                    cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:

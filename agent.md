@@ -36,7 +36,7 @@ and production deployment are operator-managed.
 ```text
 syncToCeph                 executable repository launcher
 pyproject.toml             package metadata and installed console entry point
-synctoceph/
+src/synctoceph/
   __main__.py              python -m synctoceph entry point
   cli.py                   arguments, detachment, monitoring, stop
   config.py                defaults, strict TOML, path and schedule validation
@@ -53,7 +53,7 @@ claude.md                  symlink to agent.md
 
 ## Execution patterns
 
-From the repository, use `./syncToCeph` or `python3 -m synctoceph`; installation
+From the repository, use `./syncToCeph` or `PYTHONPATH=src python3 -m synctoceph`; installation
 is optional. Run tests with `python3 -m unittest discover -s tests -v`.
 
 Direct execution needs Python 3.11+ and rsync 3.2+; pip and a virtual environment
