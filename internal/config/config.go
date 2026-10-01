@@ -47,12 +47,13 @@ type Config struct {
 	Interval     string   `toml:"interval"`
 	At           string   `toml:"at"`
 	DryRun       bool     `toml:"dry_run"`
+	Verbose      bool     `toml:"verbose"`
 }
 
 // Defaults returns the built-in values used for keys missing from the file.
 // There are deliberately no default data paths: `synctoceph init` must be run.
 func Defaults() Config {
-	return Config{Existing: ExistingSkip, Verify: VerifyNew, SettleTime: DefaultSettleTime}
+	return Config{Existing: ExistingSkip, Verify: VerifyNew, SettleTime: DefaultSettleTime, Verbose: true}
 }
 
 // SuggestedExclude is what `init` writes for exclude: Windows thumbnail and
@@ -95,7 +96,10 @@ type Settings struct {
 	Interval     time.Duration
 	At           string
 	DryRun       bool
-	StateDir     string
+	// Verbose lists every file as it is copied and verified. The -v and -q
+	// flags override it for one command.
+	Verbose  bool
+	StateDir string
 }
 
 // machinePattern keeps machine names safe as a single folder name.
@@ -104,7 +108,7 @@ var machinePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$`)
 // Resolve checks every value and returns the settings for a profile.
 func (c Config) Resolve(profile string) (Settings, error) {
 	s := Settings{Profile: profile, Existing: c.Existing, Verify: c.Verify,
-		Exclude: c.Exclude, At: c.At, DryRun: c.DryRun}
+		Exclude: c.Exclude, At: c.At, DryRun: c.DryRun, Verbose: c.Verbose}
 	s.MachineName = c.MachineName
 	if s.MachineName == "" {
 		s.MachineName = DefaultMachineName()

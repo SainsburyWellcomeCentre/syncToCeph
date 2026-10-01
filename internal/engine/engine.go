@@ -30,7 +30,11 @@ type Options struct {
 	PendingVerify []string
 	// Progress, if set, is told about each phase and progress within it.
 	Progress func(phase, detail string)
-	// Verbose, if set, receives every rsync output line.
+	// Event, if set, is told about each file copied, verified or deferred,
+	// and about the scan and plan results (see Event).
+	Event func(Event)
+	// Verbose, if set, receives rsync's messages (warnings and errors). The
+	// per-file lines rsync prints are turned into Events instead.
 	Verbose func(line string)
 	// Grace returns how long rsync gets after SIGINT before SIGKILL.
 	Grace func() time.Duration
@@ -106,6 +110,7 @@ func (r *run) execute(ctx context.Context) {
 		return
 	}
 	r.recordScan(scan)
+	r.event(Event{Kind: EventScanned, Summary: r.sum})
 	if r.manifest, err = archive.LoadManifest(r.s.MachineDir); err != nil {
 		r.fail(ui.ManifestUnreadable(archive.ManifestPath(r.s.MachineDir), err))
 		return
@@ -115,6 +120,7 @@ func (r *run) execute(ctx context.Context) {
 	if r.s.DryRun {
 		r.recordPlan(plan)
 		r.sum.WouldCopy = Paths(plan.Copy)
+		r.event(Event{Kind: EventPlanned, Summary: r.sum})
 		return
 	}
 	if r.writer, err = archive.OpenManifestWriter(r.s.MachineDir); err != nil {
@@ -123,6 +129,7 @@ func (r *run) execute(ctx context.Context) {
 	}
 	r.checkExisting(ctx, &plan)
 	r.recordPlan(plan)
+	r.event(Event{Kind: EventPlanned, Summary: r.sum})
 	if ctx.Err() != nil {
 		return
 	}
@@ -214,6 +221,13 @@ func (r *run) fail(err error) {
 	}
 	r.sum.Errors = append(r.sum.Errors, text)
 	r.log.Error("%s", err.Error())
+}
+
+// event passes an Event on, if anyone is listening.
+func (r *run) event(e Event) {
+	if r.o.Event != nil {
+		r.o.Event(e)
+	}
 }
 
 // phase announces the start of a step.

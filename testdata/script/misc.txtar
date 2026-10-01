@@ -29,9 +29,13 @@ exec synctoceph run -q
 ! stdout 'Scanning'
 stdout '^RESULT    OK'
 
-# -v shows every rsync line.
+# -v lists every file copied and verified (rsync's raw lines are in the log).
 cp src/a.txt src/b.txt
 exec synctoceph run -v
+stdout '\[1/1\] copied    b.txt'
+stdout '\[1/1\] verified  b.txt'
+! stdout '>f\+\+\+'
+exec synctoceph logs -n 200
 stdout '>f\+\+\+\+\+\+\+\+\+ b.txt'
 ! exec synctoceph run -v -q
 stderr 'cannot be used together'

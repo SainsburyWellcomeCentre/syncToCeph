@@ -1,7 +1,9 @@
 // This file prints the lines people see in the terminal. Every line starts
 // with a plain-text marker (OK, NOTE, DEFERRED, WARNING, ERROR, RESULT) padded
 // to a fixed width, so output stays readable in logs and without colour.
-// Colour is added only when writing to a terminal and NO_COLOR is not set.
+// While a run is working, each step starts with "==>" (the same style as
+// install.sh) and its details are indented under it. Colour is added only
+// when writing to a terminal and NO_COLOR is not set.
 package ui
 
 import (
@@ -40,7 +42,22 @@ var markerColours = map[string]string{
 	MarkResult:   "\x1b[1m",
 }
 
-const colourReset = "\x1b[0m"
+// Other ANSI styles: for step lines, headings and secondary details.
+const (
+	colourReset = "\x1b[0m"
+	styleBold   = "\x1b[1m"
+	styleDim    = "\x1b[2m"
+	styleStep   = "\x1b[1;34m" // bold blue, for the "==>" of a step
+	styleGood   = "\x1b[1;32m" // bold green
+	styleWait   = "\x1b[1;33m" // bold yellow
+	styleBad    = "\x1b[1;31m" // bold red
+)
+
+// stepArrow starts a step line; stepIndent lines details up under its text.
+const (
+	stepArrow  = "==>"
+	stepIndent = "    "
+)
 
 // Printer writes marker lines to one output stream.
 type Printer struct {
@@ -78,6 +95,9 @@ func (p *Printer) Line(marker, text string) {
 			strings.Repeat(" ", markerWidth-len(marker))
 	}
 	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	if marker == MarkResult {
+		lines[0] = p.resultWord(lines[0])
+	}
 	fmt.Fprintln(p.Out, label+lines[0])
 	for _, line := range lines[1:] {
 		if line == "" {
@@ -99,4 +119,47 @@ func (p *Printer) Plain(text string) {
 // Problem prints an error with its explanation and fix.
 func (p *Printer) Problem(err error) {
 	p.Line(MarkError, Explain(err))
+}
+
+// Step prints the start of a step of the work, e.g. "==> Scanning the source".
+func (p *Printer) Step(text string) {
+	p.Plain(p.paint(styleStep, stepArrow) + " " + p.paint(styleBold, text))
+}
+
+// Detail prints a line under a step, lined up with the step's text.
+func (p *Printer) Detail(text string) {
+	p.Plain(stepIndent + text)
+}
+
+// Blank prints an empty line, unless quiet.
+func (p *Printer) Blank() { p.Plain("") }
+
+// paint wraps text in an ANSI style when colour is on.
+func (p *Printer) paint(style, text string) string {
+	if !p.Colour || text == "" {
+		return text
+	}
+	return style + text + colourReset
+}
+
+// resultWord colours the verdict at the start of a RESULT line ("OK",
+// "PARTIAL", "FAILED", ...): green for good, yellow for "not finished yet",
+// red for a problem.
+func (p *Printer) resultWord(line string) string {
+	word, rest, found := strings.Cut(line, ":")
+	if !found {
+		return line
+	}
+	return p.paint(resultStyle(word), word) + ":" + rest
+}
+
+// resultStyle picks the colour of a verdict such as "OK" or "FAILED".
+func resultStyle(word string) string {
+	switch {
+	case strings.HasPrefix(word, "OK"), word == "SAFE":
+		return styleGood
+	case strings.HasPrefix(word, "PARTIAL"), strings.HasPrefix(word, "INTERRUPTED"):
+		return styleWait
+	}
+	return styleBad
 }

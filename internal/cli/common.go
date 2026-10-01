@@ -4,6 +4,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"os/signal"
@@ -21,10 +22,16 @@ import (
 // (and the docs) when the meaning of a field changes.
 const JSONSchemaVersion = 1
 
-// loadSettings reads the profile's config file, lets adjust apply
-// command-line flags (which take precedence), and checks the result.
+// loadSettings reads the config file of the profile chosen with --profile,
+// lets adjust apply command-line flags (which take precedence), and checks
+// the result.
 func loadSettings(g *globals, adjust func(*config.Config)) (config.Settings, error) {
-	file, err := config.ConfigFile(g.profile)
+	return loadProfile(g.profile, adjust)
+}
+
+// loadProfile is loadSettings for a named profile.
+func loadProfile(profile string, adjust func(*config.Config)) (config.Settings, error) {
+	file, err := config.ConfigFile(profile)
 	if err != nil {
 		return config.Settings{}, err
 	}
@@ -35,7 +42,37 @@ func loadSettings(g *globals, adjust func(*config.Config)) (config.Settings, err
 	if adjust != nil {
 		adjust(&cfg)
 	}
-	return cfg.Resolve(g.profile)
+	return cfg.Resolve(profile)
+}
+
+// allProfiles returns every profile that has a config file, or an error
+// explaining how to create one if there are none.
+func allProfiles(cmd *cobra.Command) ([]string, error) {
+	if cmd.Flags().Changed("profile") {
+		return nil, usageError{errors.New(ui.ProfileWithAllProfiles)}
+	}
+	profiles, err := config.Profiles()
+	if err != nil {
+		return nil, err
+	}
+	if len(profiles) == 0 {
+		dir, _ := config.ConfigDir()
+		return nil, ui.NoProfiles(dir)
+	}
+	return profiles, nil
+}
+
+// listEveryFile decides whether a run lists every file it copies and
+// verifies: -q turns it off, -v (or --verbose=false) decides when given, and
+// otherwise the profile's verbose setting does.
+func listEveryFile(cmd *cobra.Command, g *globals, configured bool) bool {
+	switch {
+	case g.quiet:
+		return false
+	case cmd.Flags().Changed("verbose"):
+		return g.verbose
+	}
+	return configured
 }
 
 // printer returns a printer for the command's standard output.

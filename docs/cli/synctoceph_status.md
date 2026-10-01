@@ -1,3 +1,5 @@
+[Home](../../README.md) · [All documentation](../README.md) · [All commands](synctoceph.md)
+
 ## synctoceph status
 
 Show what synctoceph is doing and the last result
@@ -6,7 +8,8 @@ Show what synctoceph is doing and the last result
 
 Shows whether a run or the scheduler is active, the result of the last run,
 the next scheduled run, and files that are deferred or differ from the
-archive. Reads only; it never starts anything.
+archive. --all-profiles shows one line per profile instead. Reads only; it
+never starts anything.
 
 ```
 synctoceph status [flags]
@@ -15,10 +18,11 @@ synctoceph status [flags]
 ### Options
 
 ```
-      --deferred    list files left for a later run
-      --differing   list files in the archive that differ from the source and were not replaced
-  -h, --help        help for status
-      --json        print machine-readable JSON
+      --all-profiles   show one line for every profile
+      --deferred       list files left for a later run
+      --differing      list files in the archive that differ from the source and were not replaced
+  -h, --help           help for status
+      --json           print machine-readable JSON
 ```
 
 ### Options inherited from parent commands
@@ -27,7 +31,7 @@ synctoceph status [flags]
       --no-color         never use colour (NO_COLOR is also honoured)
       --profile string   configuration profile, for several jobs on one computer (default "default")
   -q, --quiet            print only the result and errors
-  -v, --verbose          show more detail, including every rsync line
+  -v, --verbose          list every file copied and verified (default from config: verbose = true); --verbose=false turns it off
 ```
 
 ### SEE ALSO

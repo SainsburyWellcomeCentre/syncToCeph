@@ -1,3 +1,5 @@
+[Home](../../README.md) · [All documentation](../README.md) · [All commands](synctoceph.md)
+
 ## synctoceph init
 
 Create the configuration for this computer
@@ -11,6 +13,9 @@ configuration is written to ~/.config/synctoceph/<profile>.toml.
 Every question can also be answered with a flag; with --yes, questions not
 answered by a flag use their default. The archive folder must already exist:
 synctoceph never creates it.
+
+For a second job (another source or archive folder), create another profile:
+synctoceph --profile NAME init.
 
 ```
 synctoceph init [flags]
@@ -35,7 +40,7 @@ synctoceph init [flags]
       --no-color         never use colour (NO_COLOR is also honoured)
       --profile string   configuration profile, for several jobs on one computer (default "default")
   -q, --quiet            print only the result and errors
-  -v, --verbose          show more detail, including every rsync line
+  -v, --verbose          list every file copied and verified (default from config: verbose = true); --verbose=false turns it off
 ```
 
 ### SEE ALSO

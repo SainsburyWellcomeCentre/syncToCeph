@@ -36,7 +36,7 @@ func (c *Controller) RunOnce() archive.RunSummary {
 
 	out := engine.Run(c.ctx, engine.Options{Settings: c.Settings, RunID: runID, Version: c.Version,
 		Log: c.Log, LockFiles: []*os.File{c.lock.File}, PendingVerify: pending,
-		Progress: c.setPhase, Verbose: c.Verbose, Grace: c.graceNow})
+		Progress: c.setPhase, Event: c.Event, Verbose: c.Verbose, Grace: c.graceNow})
 	sum := out.Summary
 
 	c.mu.Lock()

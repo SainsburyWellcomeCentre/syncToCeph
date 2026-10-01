@@ -26,6 +26,16 @@ func main() {
 	}
 }
 
+// navigation is the line at the top of every command page, linking back to
+// the README, the documentation index and the command overview.
+func navigation(filename string) string {
+	nav := "[Home](../../README.md) · [All documentation](../README.md)"
+	if filepath.Base(filename) != "synctoceph.md" {
+		nav += " · [All commands](synctoceph.md)"
+	}
+	return nav + "\n\n"
+}
+
 func generate(docsDir, completionsDir string) error {
 	root := cli.NewRoot()
 	root.DisableAutoGenTag = true // no dates, so the output only changes when the commands do
@@ -34,7 +44,7 @@ func generate(docsDir, completionsDir string) error {
 			return err
 		}
 	}
-	if err := doc.GenMarkdownTree(root, docsDir); err != nil {
+	if err := doc.GenMarkdownTreeCustom(root, docsDir, navigation, func(link string) string { return link }); err != nil {
 		return fmt.Errorf("writing %s: %w", docsDir, err)
 	}
 	bash, err := os.Create(filepath.Join(completionsDir, "synctoceph.bash"))

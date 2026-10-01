@@ -1,3 +1,5 @@
+[Home](../../README.md) · [All documentation](../README.md)
+
 ## synctoceph
 
 Copy acquisition data to the lab archive, verified with SHA-256
@@ -11,6 +13,10 @@ after the SHA-256 of the source and of the archive copy match.
 
 Start with: synctoceph init, then synctoceph doctor, then synctoceph run --dry-run.
 
+To copy several folders (each with its own source and archive folder), give
+each its own profile: synctoceph --profile NAME init. Run them all with
+synctoceph run --all-profiles.
+
 ### Options
 
 ```
@@ -18,7 +24,7 @@ Start with: synctoceph init, then synctoceph doctor, then synctoceph run --dry-r
       --no-color         never use colour (NO_COLOR is also honoured)
       --profile string   configuration profile, for several jobs on one computer (default "default")
   -q, --quiet            print only the result and errors
-  -v, --verbose          show more detail, including every rsync line
+  -v, --verbose          list every file copied and verified (default from config: verbose = true); --verbose=false turns it off
 ```
 
 ### SEE ALSO

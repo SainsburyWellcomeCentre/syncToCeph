@@ -138,3 +138,30 @@ func TestPathsFollowXDG(t *testing.T) {
 		t.Fatal("profile names must not contain path separators")
 	}
 }
+
+func TestVerboseIsOnUnlessTurnedOff(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	for content, want := range map[string]bool{"": true, "verbose = true\n": true, "verbose = false\n": false} {
+		cfg, err := Load(writeConfig(t, "source = \"/src\"\narchive = \"/archive\"\n"+content))
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := cfg.Resolve("default")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Verbose != want {
+			t.Errorf("%q: verbose = %t, want %t", content, s.Verbose, want)
+		}
+	}
+	// A config written by init keeps the choice.
+	path := filepath.Join(t.TempDir(), "p.toml")
+	c := Defaults()
+	c.Source, c.Archive, c.Verbose = "/src", "/archive", false
+	if err := c.Save("p", path, false); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Load(path); err != nil || got.Verbose {
+		t.Fatalf("verbose = false was not kept: %+v, %v", got, err)
+	}
+}

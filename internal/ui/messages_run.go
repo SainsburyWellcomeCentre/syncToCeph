@@ -18,22 +18,6 @@ const listLimit = 10
 // warning rather than a normal deferral.
 const EscalateAfter = 24 * time.Hour
 
-// PhaseLine returns the terminal line announcing a phase, or "" for phases
-// that are not announced.
-func PhaseLine(phase, detail string) string {
-	switch phase {
-	case "scanning":
-		return "Scanning the source..."
-	case "copying":
-		return "Copying " + detail + "..."
-	case "checking existing":
-		return "Checking files already in the archive (SHA-256)..."
-	case "verifying":
-		return "Verifying copies (SHA-256)..."
-	}
-	return ""
-}
-
 // RunReport prints the report of a finished run. settle is the configured
 // settle time, mentioned in the deferral explanation.
 func RunReport(p *Printer, s archive.RunSummary, settle time.Duration, all bool) {

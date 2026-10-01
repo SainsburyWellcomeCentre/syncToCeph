@@ -1,3 +1,5 @@
+[Home](../README.md) · [All documentation](README.md)
+
 # Operations
 
 Day-to-day use: checking on runs, reading logs, stopping, recovering, and the
@@ -14,7 +16,48 @@ synctoceph logs --run RUN_ID     # the lines of one run
 synctoceph fleet                 # every machine that writes to the archive
 ```
 
-Use `--profile NAME` for a profile other than `default`.
+Use `--profile NAME` for a profile other than `default`, and
+`status --all-profiles` for one line per profile.
+
+## What a run shows
+
+```
+synctoceph run (profile default)
+  Source    /mnt/d/acquisition
+  Archive   /mnt/z/lab-archive/scope-01
+  Options   existing=skip  verify=new  settle_time=10m
+
+==> Checking the archive, the source and rsync
+==> Scanning the source
+    Found 1,204 files (38.2 GB)
+==> Comparing with the archive
+    3 files to copy (1.2 GB); 1,201 already archived and verified
+==> Copying 3 files (1.2 GB)
+    [1/3] copied    session_42/stack_0001.tif  400.0 MB
+    ...
+==> Verifying copies (SHA-256)
+    [1/3] verified  session_42/stack_0001.tif
+    ...
+
+OK        Copied and verified 3 files (1.2 GB) in 2m 10s
+RESULT    OK: everything that needed copying is archived and verified.
+```
+
+Each step starts with `==>`. The `copied` and `verified` lines appear only
+when `verbose = true` (the default; see [configuration.md](configuration.md));
+`--verbose=false` hides them for one run and `-q` prints only the RESULT line.
+On a terminal the verdict is coloured: green for OK, yellow for PARTIAL or
+INTERRUPTED, red for FAILED. rsync's own output is in the log
+(`synctoceph logs`).
+
+With `run --all-profiles`, each profile's report is followed by a summary:
+
+```
+==> Summary of 2 profiles
+    default  OK           copied 3 files (1.2 GB)
+    video    PARTIAL      nothing new to copy; 1 file left for a later run
+RESULT    PARTIAL: 1 of 2 profiles left files for a later run. Do not delete those from the source.
+```
 
 ## Before deleting data from an acquisition PC
 
@@ -84,7 +127,10 @@ verified by the next run.
 
 Every read command accepts `--json`: `status`, `logs`, `doctor`, `verify`,
 `check-archived`, `history list`, `fleet`, `service status` and `version`.
-Each output has `"schema_version": 1`. The run summary (in `status --json`
+Each output has `"schema_version": 1`. With `--all-profiles`, `status --json`
+prints `{"schema_version": 1, "profiles": [...]}` with one `status` object per
+profile, and `doctor --json` prints `{"schema_version": 1, "problems": N,
+"profiles": [{"profile", "problems", "checks"}, ...]}`. The run summary (in `status --json`
 under `status.last_run`, and in the archive under `.syncToCeph/runs/`) has
 these fields:
 
@@ -106,3 +152,7 @@ these fields:
 
 In the archive, lists are cut to 100 entries; the `*_count` fields are always
 complete. Changing the meaning of a field requires a new `schema_version`.
+
+---
+
+Previous: [Scheduling](scheduling.md) · Next: [Troubleshooting](troubleshooting.md) · [All documentation](README.md) · [Home](../README.md)

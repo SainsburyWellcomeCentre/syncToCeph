@@ -1,3 +1,5 @@
+[Home](../README.md) · [All documentation](README.md)
+
 # Safety model
 
 What synctoceph guarantees about research data, how, and what it does not
@@ -21,6 +23,11 @@ with `grep -rn "SAFETY:" internal`) and checked by at least one test.
 | 9 | A dry run writes nothing to the archive. | A dry run does not create folders, start rsync, or write summaries. |
 | 10 | One run per profile at a time. | A lock in the state folder, inherited by rsync so it stays held while rsync runs. A second lock in `.syncToCeph/` stops two profiles on one computer writing the same machine folder. |
 | 11 | Stopping is graceful. | Stop, Ctrl-C and SIGTERM send SIGINT to rsync's process group, then SIGKILL after 30 seconds. An interrupted run is never reported as verified. |
+
+Uninstalling keeps these promises too: `./uninstall.sh --purge` deletes only
+synctoceph's own files on this computer (config, state, logs, build cache).
+The archive, including its `.syncToCeph/` folder with the verified-file
+record and the history of replaced files, and the source are never touched.
 
 ## What is not guaranteed
 
@@ -46,3 +53,7 @@ with `grep -rn "SAFETY:" internal`) and checked by at least one test.
 The invariants above must never be weakened, removed or bypassed. A change
 that touches `SAFETY:` lines or their tests must say so in its summary; see
 [AGENTS.md](../AGENTS.md).
+
+---
+
+Previous: [Troubleshooting](troubleshooting.md) · Next: [Design](design.md) · [All documentation](README.md) · [Home](../README.md)

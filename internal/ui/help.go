@@ -12,7 +12,11 @@ archive share (<archive>/<machine_name>/), using rsync. It never deletes
 anything from the archive or the source. A file is reported as archived only
 after the SHA-256 of the source and of the archive copy match.
 
-Start with: synctoceph init, then synctoceph doctor, then synctoceph run --dry-run.`
+Start with: synctoceph init, then synctoceph doctor, then synctoceph run --dry-run.
+
+To copy several folders (each with its own source and archive folder), give
+each its own profile: synctoceph --profile NAME init. Run them all with
+synctoceph run --all-profiles.`
 
 	InitShort = "Create the configuration for this computer"
 	InitLong  = `Asks for the machine name, the source folder, the archive folder, the mount
@@ -21,12 +25,17 @@ configuration is written to ~/.config/synctoceph/<profile>.toml.
 
 Every question can also be answered with a flag; with --yes, questions not
 answered by a flag use their default. The archive folder must already exist:
-synctoceph never creates it.`
+synctoceph never creates it.
+
+For a second job (another source or archive folder), create another profile:
+synctoceph --profile NAME init.`
 
 	DoctorShort = "Check the setup and explain how to fix problems"
 	DoctorLong  = `Checks the configuration, rsync, the source folder, the archive mount (and its
 filesystem type), the archive folder, the state folder, the time zone and the
-service. Each problem is printed with how to fix it. Nothing is changed.
+service, and notes when another profile copies into the same archive
+folder. Each problem is printed with how to fix it. Nothing is changed.
+--all-profiles checks every profile.
 
 Exit code 0 means no problems were found.`
 
@@ -38,6 +47,13 @@ Files already in the archive are left alone unless --existing replace is
 given; then the old version is kept under .syncToCeph/history/<run-id>/.
 Files modified within settle_time, or that change during the run, are
 deferred to a later run.
+
+Each file is listed as it is copied and verified (setting: verbose). For one
+run, --verbose=false shows only the steps and the result, -v lists every file
+and -q prints only the result.
+
+--all-profiles runs every profile one after another and ends with a summary;
+the exit code is that of the worst result.
 
 Exit codes: 0 OK, 1 FAILED, 2 usage error, 3 PARTIAL (files deferred),
 130 INTERRUPTED.`
@@ -52,7 +68,8 @@ Normally started by the service (synctoceph service install).`
 	StatusShort = "Show what synctoceph is doing and the last result"
 	StatusLong  = `Shows whether a run or the scheduler is active, the result of the last run,
 the next scheduled run, and files that are deferred or differ from the
-archive. Reads only; it never starts anything.`
+archive. --all-profiles shows one line per profile instead. Reads only; it
+never starts anything.`
 
 	LogsShort = "Show recent log lines"
 	LogsLong  = `Prints the last lines of the log (kept in the state folder, rotated at 5 MB,
@@ -99,7 +116,9 @@ problems. Reads only. Uses the archive from this profile's config unless
     "synctoceph schedule";
   - on WSL without systemd: a Windows Task Scheduler task running
     "wsl.exe -d <distro> -- synctoceph run".
---print shows what would be set up without changing anything.`
+--print shows what would be set up without changing anything.
+--all-profiles sets up every profile that has a schedule (one service or
+task each).`
 	ServiceUninstallShort = "Remove automatic runs"
 	ServiceStatusShort    = "Show whether automatic runs are set up"
 	ServiceInstallShort   = "Set up automatic runs"

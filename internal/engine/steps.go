@@ -83,7 +83,7 @@ func (r *run) checkExisting(ctx context.Context, plan *Plan) {
 		r.dropped[f.Path] = true
 		switch {
 		case c.SHA256 != "":
-			r.record(f, c.SHA256)
+			r.record(f, c.SHA256, i+1, len(todo))
 		case c.Defer != "":
 			r.deferFile(f, c.Defer)
 		case errors.Is(c.Err, errMismatch) && r.s.Existing == config.ExistingReplace:
@@ -132,15 +132,19 @@ func (r *run) transfer(ctx context.Context, rsyncPath string, plan Plan) bool {
 		env: rsyncEnv(r.s.StateDir), lockFiles: r.o.LockFiles, grace: r.o.Grace}
 	job.onStdout = func(line string) {
 		r.log.Info("rsync: %s", line)
-		if item, ok := ParseItemized(line); ok && item.Received() {
-			if _, planned := sizes[item.Name]; planned && !copied[item.Name] {
-				copied[item.Name] = true
-				r.sum.Copied++
-				r.sum.CopiedBytes += sizes[item.Name]
+		item, ok := ParseItemized(line)
+		if !ok {
+			if r.o.Verbose != nil {
+				r.o.Verbose(line)
 			}
+			return
 		}
-		if r.o.Verbose != nil {
-			r.o.Verbose(line)
+		if _, planned := sizes[item.Name]; planned && item.Received() && !copied[item.Name] {
+			copied[item.Name] = true
+			r.sum.Copied++
+			r.sum.CopiedBytes += sizes[item.Name]
+			r.event(Event{Kind: EventCopied, Path: item.Name, Size: sizes[item.Name],
+				Done: r.sum.Copied, Total: len(plan.Copy)})
 		}
 	}
 	job.onStderr = func(line string) {
@@ -176,7 +180,7 @@ func (r *run) verifyCopies(ctx context.Context, files []SourceFile) {
 		c := VerifyFile(ctx, r.s.Source, r.s.MachineDir, f)
 		switch {
 		case c.SHA256 != "":
-			r.record(f, c.SHA256)
+			r.record(f, c.SHA256, i+1, len(files))
 		case c.Defer != "":
 			delete(r.pending, f.Path)
 			r.deferFile(f, c.Defer)
@@ -186,8 +190,9 @@ func (r *run) verifyCopies(ctx context.Context, files []SourceFile) {
 	}
 }
 
-// record adds a verified file to the manifest and the summary.
-func (r *run) record(f SourceFile, sum string) {
+// record adds a verified file to the manifest and the summary. done and
+// total say where the file is in the current step, for the progress lines.
+func (r *run) record(f SourceFile, sum string, done, total int) {
 	// SAFETY: invariant 4 ("archived" means verified): only called after the SHA-256 of
 	// source and archive copy matched and the source was unchanged.
 	err := r.writer.Append(archive.Entry{Path: f.Path, Size: f.Size, MTime: f.MTime.UTC(),
@@ -200,10 +205,12 @@ func (r *run) record(f SourceFile, sum string) {
 	r.verified[f.Path] = true
 	r.sum.Verified++
 	r.sum.VerifiedBytes += f.Size
+	r.event(Event{Kind: EventVerified, Path: f.Path, Size: f.Size, Done: done, Total: total})
 }
 
 // deferFile records a file left for a later run.
 func (r *run) deferFile(f SourceFile, reason string) {
 	r.log.Warn("Deferred %s: %s", f.Path, reason)
 	r.sum.Deferred = append(r.sum.Deferred, archive.DeferredFile{Path: f.Path, Reason: reason, ModifiedAt: f.MTime})
+	r.event(Event{Kind: EventDeferred, Path: f.Path, Size: f.Size, Reason: reason})
 }

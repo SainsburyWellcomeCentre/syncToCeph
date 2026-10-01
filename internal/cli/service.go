@@ -37,42 +37,72 @@ func executable() (string, error) {
 
 func newServiceInstall(g *globals) *cobra.Command {
 	var manager string
-	var printOnly bool
+	var printOnly, everyProfile bool
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: ui.ServiceInstallShort,
 		Long:  ui.ServiceInstallLong,
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s, err := loadSettings(g, nil)
-			if err != nil {
-				return err
-			}
-			if s.Interval == 0 && s.At == "" {
-				return ui.NoSchedule(g.profile)
-			}
-			binary, err := executable()
-			if err != nil {
-				return err
-			}
 			if manager == service.ManagerAuto {
 				manager = service.Detect()
 			}
-			p := printer(cmd, g)
 			switch manager {
-			case service.ManagerSystemd:
-				return installSystemd(p, binary, s, printOnly)
-			case service.ManagerTask:
-				return installTask(p, binary, s, printOnly)
+			case service.ManagerSystemd, service.ManagerTask:
 			case service.ManagerNone:
 				return ui.NoServiceManager()
+			default:
+				return usageError{fmt.Errorf("--manager must be auto, systemd or task-scheduler, not %q", manager)}
 			}
-			return usageError{fmt.Errorf("--manager must be auto, systemd or task-scheduler, not %q", manager)}
+			profiles := []string{g.profile}
+			if everyProfile {
+				var err error
+				if profiles, err = allProfiles(cmd); err != nil {
+					return err
+				}
+			}
+			p := printer(cmd, g)
+			failed := 0
+			for _, profile := range profiles {
+				s, err := loadProfile(profile, nil)
+				if err == nil && s.Interval == 0 && s.At == "" {
+					err = ui.NoSchedule(profile)
+				}
+				if err != nil {
+					if !everyProfile {
+						return err
+					}
+					p.Line(ui.MarkNote, ui.ServiceSkipped(profile, err))
+					continue
+				}
+				if err := installService(p, manager, s, printOnly); err != nil {
+					if !everyProfile {
+						return err
+					}
+					p.Problem(err)
+					failed++
+				}
+			}
+			return exitWith(min(failed, 1))
 		},
 	}
 	cmd.Flags().StringVar(&manager, "manager", service.ManagerAuto, "auto, systemd or task-scheduler")
 	cmd.Flags().BoolVar(&printOnly, "print", false, "only show what would be set up")
+	cmd.Flags().BoolVar(&everyProfile, "all-profiles", false, "set up automatic runs for every profile that has a schedule")
 	return cmd
+}
+
+// installService sets up (or, with printOnly, shows) automatic runs for one
+// profile with the given service manager.
+func installService(p *ui.Printer, manager string, s config.Settings, printOnly bool) error {
+	binary, err := executable()
+	if err != nil {
+		return err
+	}
+	if manager == service.ManagerSystemd {
+		return installSystemd(p, binary, s, printOnly)
+	}
+	return installTask(p, binary, s, printOnly)
 }
 
 // installSystemd sets up (or prints) the systemd user service.
@@ -156,7 +186,8 @@ func newServiceUninstall(g *globals) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&all, "all", false, "remove automatic runs of every profile")
+	cmd.Flags().BoolVar(&all, "all-profiles", false, "remove automatic runs of every profile")
+	cmd.Flags().BoolVar(&all, "all", false, "the same as --all-profiles")
 	return cmd
 }
 

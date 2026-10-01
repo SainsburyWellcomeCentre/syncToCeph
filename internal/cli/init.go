@@ -108,7 +108,11 @@ func newInit(g *globals) *cobra.Command {
 			if err := cfg.Save(g.profile, file, f.force); err != nil {
 				return ui.ConfigNotSaved(file, err)
 			}
-			printer(cmd, g).Line(ui.MarkOK, ui.ConfigSaved(file, s.MachineDir, g.profile))
+			p := printer(cmd, g)
+			p.Line(ui.MarkOK, ui.ConfigSaved(file, s.MachineDir, g.profile))
+			if others := sharingProfiles(s); len(others) > 0 {
+				p.Line(ui.MarkNote, ui.SharedMachineFolder(s.MachineDir, append([]string{g.profile}, others...)))
+			}
 			return nil
 		},
 	}

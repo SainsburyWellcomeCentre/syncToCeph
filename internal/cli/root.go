@@ -90,7 +90,7 @@ func NewRoot() *cobra.Command {
 	root.CompletionOptions.DisableDefaultCmd = true
 	flags := root.PersistentFlags()
 	flags.StringVar(&g.profile, "profile", config.DefaultProfile, "configuration profile, for several jobs on one computer")
-	flags.BoolVarP(&g.verbose, "verbose", "v", false, "show more detail, including every rsync line")
+	flags.BoolVarP(&g.verbose, "verbose", "v", false, "list every file copied and verified (default from config: verbose = true); --verbose=false turns it off")
 	flags.BoolVarP(&g.quiet, "quiet", "q", false, "print only the result and errors")
 	flags.BoolVar(&g.noColor, "no-color", false, "never use colour (NO_COLOR is also honoured)")
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error { return usageError{err} })

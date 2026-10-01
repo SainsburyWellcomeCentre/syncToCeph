@@ -1,9 +1,11 @@
-// This file defines `synctoceph run` (one sync) and `synctoceph schedule`
-// (syncs on the configured schedule, used by the service).
+// This file defines `synctoceph run` (one sync, for one profile or for every
+// profile in turn) and `synctoceph schedule` (syncs on the configured
+// schedule, used by the service).
 package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -13,11 +15,12 @@ import (
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/ui"
 )
 
-// runFlags are the flags of `run` that override the config file.
+// runFlags are the flags of `run`.
 type runFlags struct {
-	dryRun   bool
-	existing string
-	verify   string
+	dryRun      bool
+	existing    string
+	verify      string
+	allProfiles bool
 }
 
 // apply puts the flags that were given on top of the config file.
@@ -43,44 +46,78 @@ func newRun(g *globals) *cobra.Command {
 		Long:  ui.RunLong,
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s, err := loadSettings(g, f.apply(cmd))
+			if f.allProfiles {
+				return runAllProfiles(cmd, g, f)
+			}
+			sum, err := runProfile(cmd, g, f, g.profile)
 			if err != nil {
 				return err
 			}
-			c, err := scheduler.Open(s, scheduler.ModeRun, Version)
-			if err != nil {
-				return err
-			}
-			defer c.Close()
-			defer stopOnSignal(c)()
-			p := printer(cmd, g)
-			attachOutput(c, p, g)
-			sum := c.RunOnce()
-			ui.RunReport(p, sum, s.SettleTime, g.verbose)
 			return exitWith(sum.ExitCode)
 		},
 	}
 	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, "show what would be copied; write nothing to the archive")
 	cmd.Flags().StringVar(&f.existing, "existing", "", "files already in the archive that differ: skip or replace (default from config: skip)")
 	cmd.Flags().StringVar(&f.verify, "verify", "", "what to check with SHA-256: new (files copied now) or all (default from config: new)")
+	cmd.Flags().BoolVar(&f.allProfiles, "all-profiles", false, "run every profile, one after another")
 	return cmd
 }
 
-// attachOutput shows each phase (and rsync lines with -v) in the terminal.
-func attachOutput(c *scheduler.Controller, p *ui.Printer, g *globals) {
-	last := ""
-	c.Report = func(phase, detail string) {
-		if phase == last {
-			return
+// runProfile runs one sync for profile and prints its progress and report.
+// An error means the run could not start (for example a config problem).
+func runProfile(cmd *cobra.Command, g *globals, f *runFlags, profile string) (archive.RunSummary, error) {
+	s, err := loadProfile(profile, f.apply(cmd))
+	if err != nil {
+		return archive.RunSummary{}, err
+	}
+	c, err := scheduler.Open(s, scheduler.ModeRun, Version)
+	if err != nil {
+		return archive.RunSummary{}, err
+	}
+	defer c.Close()
+	defer stopOnSignal(c)()
+	v := &runView{p: printer(cmd, g), everyFile: listEveryFile(cmd, g, s.Verbose)}
+	v.header("run", s)
+	v.attach(c)
+	sum := c.RunOnce()
+	v.report(sum, s.SettleTime)
+	return sum, nil
+}
+
+// runAllProfiles runs every profile in turn, then prints a summary. A
+// profile that cannot start is reported and the next one still runs; a stop
+// request (Ctrl-C or synctoceph stop) ends the whole command.
+func runAllProfiles(cmd *cobra.Command, g *globals, f *runFlags) error {
+	profiles, err := allProfiles(cmd)
+	if err != nil {
+		return err
+	}
+	p := printer(cmd, g)
+	problems := ui.NewPrinter(cmd.ErrOrStderr(), g.noColor, false)
+	var outcomes []ui.ProfileOutcome
+	allDry := true
+	for i, profile := range profiles {
+		if i > 0 {
+			p.Blank()
 		}
-		last = phase
-		if line := ui.PhaseLine(phase, detail); line != "" {
-			p.Plain(line)
+		ui.ProfileHeading(p, profile, i+1, len(profiles))
+		sum, err := runProfile(cmd, g, f, profile)
+		if err != nil {
+			problems.Problem(err)
+			first, _, _ := strings.Cut(err.Error(), "\n")
+			outcomes = append(outcomes, ui.ProfileOutcome{Profile: profile, Result: archive.ResultFailed,
+				Detail: fmt.Sprintf("could not start: %s", first)})
+			allDry = false
+			continue
+		}
+		outcomes = append(outcomes, ui.ProfileOutcome{Profile: profile, Result: sum.Result, Detail: ui.BriefResult(sum)})
+		allDry = allDry && sum.DryRun
+		if sum.Result == archive.ResultInterrupted {
+			break
 		}
 	}
-	if g.verbose {
-		c.Verbose = func(line string) { p.Plain(ui.Indent + line) }
-	}
+	result := ui.ProfilesSummary(p, outcomes, len(profiles), allDry)
+	return exitWith(archive.ExitCode(result))
 }
 
 func newSchedule(g *globals) *cobra.Command {
@@ -108,8 +145,10 @@ func newSchedule(g *globals) *cobra.Command {
 			defer c.Close()
 			defer stopOnSignal(c)()
 			p := printer(cmd, g)
-			attachOutput(c, p, g)
-			c.AfterRun = func(sum archive.RunSummary) { ui.RunReport(p, sum, s.SettleTime, g.verbose) }
+			v := &runView{p: p, everyFile: listEveryFile(cmd, g, s.Verbose)}
+			v.header("schedule", s)
+			v.attach(c)
+			c.AfterRun = func(sum archive.RunSummary) { v.report(sum, s.SettleTime); p.Blank() }
 			c.Waiting = func(line string) { p.Plain(line) }
 			p.Plain(fmt.Sprintf("Scheduler started for profile %s (%s). Stop with Ctrl-C or: synctoceph stop", s.Profile, c.ScheduleText()))
 			return c.Loop(immediate)

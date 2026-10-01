@@ -277,3 +277,33 @@ func TestSettlingFilesAreDeferred(t *testing.T) {
 		t.Fatal("a settling file was copied")
 	}
 }
+
+// Progress events report each file once, after rsync copied it and after its
+// SHA-256 matched, so the terminal never shows a file as verified early.
+func TestEventsFollowTheRun(t *testing.T) {
+	s := testSettings(t)
+	write(t, filepath.Join(s.Source, "a.txt"), "alpha")
+	write(t, filepath.Join(s.Source, "dir", "b.txt"), "beta")
+	var kinds []string
+	files := map[string][]string{}
+	out := Run(context.Background(), Options{Settings: s, RunID: archive.NewRunID(time.Now()),
+		Event: func(e Event) {
+			kinds = append(kinds, e.Kind)
+			if e.Path != "" {
+				files[e.Kind] = append(files[e.Kind], e.Path)
+			}
+			if e.Kind == EventVerified && e.Total != 2 {
+				t.Errorf("verified %s as %d of %d, want a total of 2", e.Path, e.Done, e.Total)
+			}
+		}})
+	if out.Summary.Result != archive.ResultOK {
+		t.Fatalf("result %s: %v", out.Summary.Result, out.Summary.Errors)
+	}
+	want := "scanned planned copied copied verified verified"
+	if got := strings.Join(kinds, " "); got != want {
+		t.Fatalf("events %q, want %q", got, want)
+	}
+	if len(files[EventCopied]) != 2 || len(files[EventVerified]) != 2 {
+		t.Fatalf("file events: %v", files)
+	}
+}

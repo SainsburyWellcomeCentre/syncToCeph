@@ -1,3 +1,5 @@
+[Home](../README.md) · [All documentation](README.md)
+
 # Troubleshooting
 
 Find the first line of the message (after `ERROR`) below. Every message also
@@ -22,7 +24,22 @@ the questions again with `synctoceph init --force`.
 
 **`a configuration already exists at ...`**
 `init` never overwrites by accident. Use `synctoceph init --force`; the current
-values are offered as defaults.
+values are offered as defaults. To copy another folder as a separate job,
+create another profile instead: `synctoceph --profile NAME init`.
+
+**`no profiles found in ...`**
+`--all-profiles` works on every config file in `~/.config/synctoceph/`, and
+there is none. Create one with `synctoceph init`.
+
+**`--profile and --all-profiles cannot be used together`**
+Use one or the other: `--profile NAME` for one profile, `--all-profiles` for
+every profile.
+
+**`Profiles A, B all copy into ...`** (a NOTE from `init` or `doctor`)
+Two profiles write the same machine folder. That works, but files with the
+same path in both sources meet in one place. If the sources are unrelated,
+give each profile its own `machine_name`. See
+[configuration.md](configuration.md#several-jobs-on-one-computer-profiles).
 
 **`the time zone TZ="..." is not known`**
 Set `TZ` to a name such as `Europe/London`, or unset it.
@@ -125,6 +142,18 @@ to a folder on the Linux disk.
 It must be a folder you own that others cannot write to:
 `chmod 700 ~/.local/state/synctoceph/<profile>`.
 
+## Installing and uninstalling
+
+**`--purge asks for confirmation; run it in a terminal, or add --yes`**
+`./uninstall.sh --purge` deletes your configuration and logs, so it asks
+first. Run it in a terminal and type `yes`, or add `--yes` in a script.
+
+**`a synctoceph run is still active`** (from `./uninstall.sh --purge`)
+A run started by hand is still using the state folder. Stop it with
+`synctoceph --profile NAME stop` (the table above the message shows which
+profile), then run `./uninstall.sh --purge` again. Only the automatic runs
+were removed.
+
 ## Automatic runs
 
 **`no schedule is set for profile ...`**
@@ -159,3 +188,7 @@ rsync 3.2.7), with a Windows NTFS drive mounted by WSL as `9p` with
 These checks used a local NTFS drive, not a network drive mapped through
 Windows; results for a mapped network share should be confirmed the same way
 before relying on it.
+
+---
+
+Previous: [Operations](operations.md) · Next: [Safety model](safety-model.md) · [All documentation](README.md) · [Home](../README.md)

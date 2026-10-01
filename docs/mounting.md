@@ -1,3 +1,5 @@
+[Home](../README.md) · [All documentation](README.md)
+
 # Mounting the lab share
 
 synctoceph writes to a share that is already mounted. It never mounts anything
@@ -67,3 +69,7 @@ example `/mnt/d/acquisition`. They need no setup. synctoceph only reads them.
 synctoceph's own state (status, log, lock) must stay on the Linux disk
 (`~/.local/state/synctoceph/`). It refuses to use a Windows drive or a network
 share for it.
+
+---
+
+Previous: [Configuration](configuration.md) · Next: [Scheduling](scheduling.md) · [All documentation](README.md) · [Home](../README.md)

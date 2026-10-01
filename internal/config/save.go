@@ -51,6 +51,10 @@ exclude       = %s
 
 # true = only show what would be copied; never write to the archive.
 dry_run       = %t
+
+# true = list every file as it is copied and verified; false = show only
+# each step and the result. Override once with -v or --verbose=false.
+verbose       = %t
 `
 
 // Render returns the text of a config file for profile.
@@ -68,7 +72,7 @@ func (c Config) Render(profile string) string {
 	}
 	return fmt.Sprintf(configTemplate, profile, quote(c.MachineName), quote(c.Source),
 		quote(c.Archive), quote(c.RequireMount), quote(c.Existing), quote(c.Verify),
-		quote(c.SettleTime), "["+strings.Join(quoted, ", ")+"]", interval, at, c.DryRun)
+		quote(c.SettleTime), "["+strings.Join(quoted, ", ")+"]", interval, at, c.DryRun, c.Verbose)
 }
 
 // quote writes s as a TOML basic string, escaping quotes, backslashes and

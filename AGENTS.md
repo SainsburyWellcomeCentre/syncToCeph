@@ -174,8 +174,17 @@ archive metadata, scheduling and process control. The safety model is in
   `verify`, `check-archived`, `history list|restore`, `fleet`,
   `service install|uninstall|status`, `completion`, `version`. The reference in
   [docs/cli/](docs/cli/synctoceph.md) is generated from the code.
+- **Profiles** (one config file per job) are chosen with `--profile NAME`;
+  `run`, `status`, `doctor` and `service install|uninstall` accept
+  `--all-profiles`. `run --all-profiles` runs them one after another and exits
+  with the worst result.
 - **Messages** use plain markers (`OK`, `NOTE`, `DEFERRED`, `WARNING`, `ERROR`,
   `RESULT`) and every problem says what happened, why it matters and what to do.
+- **Progress** while a run works: a header, one `==>` line per step, and (with
+  the `verbose` setting, on by default) one line per file copied, verified or
+  deferred. rsync's raw lines go to the log only.
+- **Uninstall:** `./uninstall.sh --purge` lists and confirms before deleting
+  config, state, logs and the build cache; it never touches the archive.
 
 When behaviour changes, update `docs/design.md` (and the other docs it affects) in
 the same change.
@@ -185,10 +194,13 @@ the same change.
 ```
 cmd/synctoceph/main.go         entry point only; calls internal/cli
 internal/cli/                  one file per command (cobra); flag parsing and output only;
-                               script_test.go runs the scenario tests
+                               runview.go shows a run's progress; common.go has the
+                               --all-profiles helpers; script_test.go runs the
+                               scenario tests
 internal/config/               profiles, XDG paths, TOML load/validate/save
 internal/engine/               preflight, scan, plan, rsync runner, verify, deferral,
-                               check-archived and verify (audit.go)
+                               check-archived and verify (audit.go), progress events
+                               (event.go)
 internal/archive/              per-machine metadata: manifest, history, run summaries,
                                fleet, safe archive paths; the RunSummary type
 internal/scheduler/            interval/daily timing; the controller (lock, log, control
@@ -207,7 +219,7 @@ scripts/check.sh               the one command that checks everything
 scripts/gen-docs.sh            regenerates docs/cli/ and completions/ from the command definitions
 .github/workflows/check.yml    CI: runs scripts/check.sh on Ubuntu
 install.sh  update.sh  uninstall.sh
-docs/                          see section 9
+docs/                          see section 9; docs/README.md is the index
 ```
 
 Dependency direction (a package only imports packages to its left): `platform` <-
@@ -246,8 +258,10 @@ Go developer. Write for them.
   happened, why it matters, what to do), made by functions in `internal/ui`.
 - **Keep wording in `internal/ui`.** Messages are grouped by topic in
   `messages.go` (setup problems), `messages_archive.go`, `messages_run.go` (the run
-  report), `messages_status.go`, `messages_setup.go`, `messages_fleet.go`, and
-  command help in `help.go`.
+  report), `messages_progress.go` (what a run shows while it works),
+  `messages_profiles.go` (several profiles), `messages_status.go`,
+  `messages_setup.go`, `messages_fleet.go`, and command help in `help.go`.
+  Terminal styling (markers, `==>` steps, colour) is in `output.go`.
 - **Name the magic numbers.** Use constants such as the 30 s SIGKILL grace, the log
   rotation size, the settle time default and the number of recent runs kept, each
   with a comment.
@@ -281,6 +295,11 @@ Go developer. Write for them.
   and timeout tests (`stop_signal.txtar`, `lock_inherited.txtar`). Service tests
   use stand-in `systemctl`/`loginctl` programs so no real service is touched, and
   the scenario `PATH` excludes Windows programs such as `schtasks.exe`.
+- **Install scripts** (`install.sh`, `update.sh`, `uninstall.sh`) have no
+  automated tests. Try them by hand with `HOME` set to a temporary folder,
+  `SYNCTOCEPH_VERSION`/`SYNCTOCEPH_COMMIT` set (so no git command runs), and a
+  `PATH` of only Go's `bin/`, `/usr/bin` and `/bin`, so Windows programs such as
+  `schtasks.exe` cannot change real scheduled tasks.
 - **Scenario helpers.** Besides testscript's own commands, scenarios can use
   `config key=value...`, `age DURATION PATH...`, `waitfor PATH`,
   `waitlog [N] REGEXP`, `snapshot DIR FILE`, `killpid FILE` and `mkfifo PATH`
@@ -306,13 +325,16 @@ Go developer. Write for them.
 
 ## 9. Documentation
 
-- **`README.md`** fits on one screen:
+- **`README.md`** stays short (about two screens):
   - what the tool does;
   - the safety promises in three bullets;
   - install (`git clone` then `./install.sh`);
   - a quickstart (`init`, then `doctor`, then `run --dry-run`, then `run`, then
-    `service install`);
-  - links to the docs;
+    `service install`), and a pointer to profiles for several jobs;
+  - "Update an existing installation": `./update.sh`, what is kept, what to do
+    without the cloned folder or after changing the code, and `uninstall.sh`
+    with and without `--purge`;
+  - links to the docs, starting with the index `docs/README.md`;
   - a short "Changing the tool" section. It says:
     - read `AGENTS.md`, the developer guide for people and agents;
     - work directly or through an AI agent;
@@ -320,8 +342,11 @@ Go developer. Write for them.
     - safety invariants can never be weakened;
     - review any `SAFETY:` lines in the change before running `./install.sh`.
 - **`docs/` contains:**
+  - `README.md`, the index: every page with one line on what it covers, in
+    reading order
   - `design.md` (from section 5)
-  - `installation.md` (install, update, uninstall)
+  - `installation.md` (install, update to a new version, reinstall, uninstall,
+    purge)
   - `configuration.md`
   - `cli/` (generated; never edit by hand)
   - `scheduling.md` (systemd, WSL, Task Scheduler)
@@ -330,6 +355,12 @@ Go developer. Write for them.
   - `safety-model.md` (what is and is not guaranteed)
   - `troubleshooting.md` (keyed by exact error message)
   - `CHANGELOG.md` at the root (Keep a Changelog format)
+- **Navigation:** every page in `docs/` starts with
+  `[Home](../README.md) · [All documentation](README.md)` and ends with a `---`
+  line followed by Previous / Next links (in the order of `docs/README.md`), All
+  documentation and Home. A new page goes into the index and into that chain.
+  The `docs/cli/` pages get their navigation line from
+  `internal/tools/gendocs`.
 - **Style:**
   - Concise, factual, no promotional language, no emoji.
   - Plain Markdown headings, lists, tables and code blocks.

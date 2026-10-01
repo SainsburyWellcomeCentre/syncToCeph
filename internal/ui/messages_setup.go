@@ -34,7 +34,8 @@ func InitGaveUp(question string) error {
 func ConfigExists(file string) error {
 	return &Problem{What: "a configuration already exists at " + file,
 		Why: "init does not overwrite it by accident",
-		Fix: "edit the file, or run `synctoceph init --force` to answer the questions again (current values are offered as defaults)"}
+		Fix: "edit the file, or run `synctoceph init --force` to answer the questions again (current values are offered as defaults).\n" +
+			"To copy another folder as a separate job, add a profile: synctoceph --profile NAME init"}
 }
 
 // ConfigNotSaved: the config file could not be written.

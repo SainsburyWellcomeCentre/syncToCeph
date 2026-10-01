@@ -1,12 +1,15 @@
-// Tests for number and time formatting, and markers.
+// Tests for number and time formatting, markers, and the progress lines.
 package ui
 
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
 )
 
 func TestSize(t *testing.T) {
@@ -62,6 +65,65 @@ func TestEveryProblemSaysWhatToDo(t *testing.T) {
 		}
 		if !strings.Contains(Explain(err), "What to do:") {
 			t.Errorf("%v: explanation lacks a fix", err)
+		}
+	}
+}
+
+func TestStepsAndColourByResult(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Printer{Out: &buf}
+	p.Step("Scanning the source")
+	p.Detail("Found 3 files")
+	FileProgress(p, "copied", "a\nb.txt", "6 B", 3, 12)
+	want := "==> Scanning the source\n    Found 3 files\n    [ 3/12] copied    \"a\\nb.txt\"  6 B\n"
+	if buf.String() != want {
+		t.Fatalf("got %q\nwant %q", buf.String(), want)
+	}
+	// With colour, the verdict of a RESULT line is green, yellow or red.
+	for text, style := range map[string]string{"OK: done": styleGood, "PARTIAL: later": styleWait,
+		"FAILED: 1 problem": styleBad, "NOT SAFE: no": styleBad, "SAFE: yes": styleGood} {
+		buf.Reset()
+		p := &Printer{Out: &buf, Colour: true}
+		p.Line(MarkResult, text)
+		if !strings.Contains(buf.String(), style) {
+			t.Errorf("%q: colour %q missing in %q", text, style, buf.String())
+		}
+	}
+}
+
+func TestScanAndPlanDetails(t *testing.T) {
+	s := archive.RunSummary{Scanned: 5, ScannedBytes: 2000, Excluded: 1,
+		Deferred: []archive.DeferredFile{{Path: "x"}}, Planned: 2, PlannedBytes: 1500, UpToDate: 2,
+		Differing: []string{"d"}}
+	if got, want := ScanDetail(s), "Found 5 files; 4 ready (2.0 KB); 1 changed recently (left for a later run); 1 excluded"; got != want {
+		t.Errorf("ScanDetail = %q, want %q", got, want)
+	}
+	if got, want := PlanDetail(s), "2 files to copy (1.5 KB); 2 already archived and verified; 1 differs from the archive (left as it is)"; got != want {
+		t.Errorf("PlanDetail = %q, want %q", got, want)
+	}
+}
+
+func TestProfilesSummaryTakesTheWorstResult(t *testing.T) {
+	tests := []struct {
+		results []string
+		want    string
+	}{
+		{[]string{archive.ResultOK, archive.ResultOK}, archive.ResultOK},
+		{[]string{archive.ResultOK, archive.ResultPartial}, archive.ResultPartial},
+		{[]string{archive.ResultPartial, archive.ResultFailed}, archive.ResultFailed},
+		{[]string{archive.ResultFailed, archive.ResultInterrupted}, archive.ResultInterrupted},
+	}
+	for _, tt := range tests {
+		var outcomes []ProfileOutcome
+		for i, r := range tt.results {
+			outcomes = append(outcomes, ProfileOutcome{Profile: fmt.Sprint("p", i), Result: r})
+		}
+		var buf bytes.Buffer
+		if got := ProfilesSummary(&Printer{Out: &buf}, outcomes, len(outcomes), false); got != tt.want {
+			t.Errorf("%v: got %s, want %s", tt.results, got, tt.want)
+		}
+		if !strings.Contains(buf.String(), "RESULT    "+tt.want) {
+			t.Errorf("%v: RESULT line missing in %q", tt.results, buf.String())
 		}
 	}
 }

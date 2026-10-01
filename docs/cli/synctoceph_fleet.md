@@ -1,3 +1,5 @@
+[Home](../../README.md) · [All documentation](../README.md) · [All commands](synctoceph.md)
+
 ## synctoceph fleet
 
 Show the latest sync of every machine in the archive
@@ -27,7 +29,7 @@ synctoceph fleet [flags]
       --no-color         never use colour (NO_COLOR is also honoured)
       --profile string   configuration profile, for several jobs on one computer (default "default")
   -q, --quiet            print only the result and errors
-  -v, --verbose          show more detail, including every rsync line
+  -v, --verbose          list every file copied and verified (default from config: verbose = true); --verbose=false turns it off
 ```
 
 ### SEE ALSO

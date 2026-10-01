@@ -1,3 +1,5 @@
+[Home](../README.md) · [All documentation](README.md)
+
 # Scheduling
 
 Set a schedule in the config file, then install the service:
@@ -21,6 +23,10 @@ How the timing works (overlaps, missed runs, daylight saving) is described in
 `synctoceph service install` picks one automatically; override it with
 `--manager systemd` or `--manager task-scheduler`. Add `--print` to see what
 would be set up without changing anything.
+
+Each profile gets its own service or task. `service install --all-profiles`
+sets up every profile that has a schedule and lists the ones it skipped;
+`service uninstall --all-profiles` removes them all.
 
 | Computer | Manager | What runs |
 |---|---|---|
@@ -91,3 +97,7 @@ here when checked.
 Until these are confirmed, prefer mounting the share inside WSL with an
 `/etc/fstab` entry, and check `synctoceph status` or `synctoceph fleet`
 regularly.
+
+---
+
+Previous: [Mounting the share](mounting.md) · Next: [Operations](operations.md) · [All documentation](README.md) · [Home](../README.md)

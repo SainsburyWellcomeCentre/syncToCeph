@@ -1,3 +1,5 @@
+[Home](../../README.md) · [All documentation](../README.md) · [All commands](synctoceph.md)
+
 ## synctoceph service
 
 Set up, remove or check automatic runs
@@ -14,7 +16,7 @@ Set up, remove or check automatic runs
       --no-color         never use colour (NO_COLOR is also honoured)
       --profile string   configuration profile, for several jobs on one computer (default "default")
   -q, --quiet            print only the result and errors
-  -v, --verbose          show more detail, including every rsync line
+  -v, --verbose          list every file copied and verified (default from config: verbose = true); --verbose=false turns it off
 ```
 
 ### SEE ALSO

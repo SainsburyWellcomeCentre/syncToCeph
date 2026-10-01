@@ -1,3 +1,5 @@
+[Home](../README.md) · [All documentation](README.md)
+
 # Design
 
 This is the specification of `synctoceph`: what it does and why. The safety
@@ -50,6 +52,25 @@ See [configuration.md](configuration.md). The file is TOML and strict: unknown
 keys are errors. Precedence is command-line flag, then config file, then
 built-in default. There are no built-in data folders; `synctoceph init` must
 be run first.
+
+## Several profiles
+
+A profile is one config file (`<profile>.toml`) with its own state folder,
+log and lock: one job, with one source and one machine folder. One computer
+can have any number of profiles, for example one per data drive.
+
+- `run --all-profiles` runs every profile in name order, one after another
+  (never in parallel), each with its own report, and ends with a summary.
+  Its result is the worst one: INTERRUPTED, then FAILED, then PARTIAL, then
+  OK; the exit code follows the table below. A profile that cannot start (a
+  config error, or it is already running) counts as FAILED and the next one
+  still runs. A stop request ends the current profile and skips the rest.
+- `status`, `doctor` and `service install` accept `--all-profiles` too;
+  `service uninstall --all-profiles` (or `--all`) removes every profile's
+  automatic runs. `--profile` and `--all-profiles` cannot be combined.
+- Two profiles may write the same machine folder (the archive lock makes them
+  take turns). `init` and `doctor` print a NOTE when they do, because files
+  with the same path in both sources would meet in one place.
 
 ## How a run works
 
@@ -134,8 +155,19 @@ than 24 hours is shown as a WARNING in `status` and `fleet`.
 
 Output lines start with a plain marker (`OK`, `NOTE`, `DEFERRED`, `WARNING`,
 `ERROR`, `RESULT`). Colour is used only on a terminal and never when
-`NO_COLOR` is set or `--no-color` is given. Every problem says what happened,
-why it matters and what to do.
+`NO_COLOR` is set or `--no-color` is given; the verdict on the RESULT line is
+green (OK, SAFE), yellow (PARTIAL, INTERRUPTED) or red (anything else). Every
+problem says what happened, why it matters and what to do.
+
+While `run` or `schedule` works, it prints a header (profile, source, machine
+folder, settings), then one `==>` line per step with an indented summary
+after the scan and the plan. With `verbose = true` (the default; `-v` and
+`--verbose=false` override it for one command) every file is listed as it is
+copied (`[n/total] copied PATH SIZE`), verified and deferred; file names with
+control characters are shown quoted. rsync's raw output goes only to the
+log, except its warnings and errors, which are also shown when verbose. `-q`
+prints only RESULT and ERROR lines. Example output is in
+[operations.md](operations.md#what-a-run-shows).
 
 ## Per-machine archive metadata
 
@@ -204,3 +236,7 @@ implemented as follows and can be changed:
 - **Modification times** are compared with a one-second tolerance, because
   Windows drives keep only whole seconds through rsync (see
   [troubleshooting.md](troubleshooting.md#windows-drives-drvfs)).
+
+---
+
+Previous: [Safety model](safety-model.md) · Next: [Command reference](cli/synctoceph.md) · [All documentation](README.md) · [Home](../README.md)

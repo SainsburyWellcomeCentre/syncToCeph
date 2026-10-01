@@ -33,7 +33,10 @@ type Controller struct {
 	Log      *state.Logger
 	// Report, if set, is told about each phase of a run (for the terminal).
 	Report func(phase, detail string)
-	// Verbose, if set, receives every rsync output line.
+	// Event, if set, is told about each file copied, verified or deferred,
+	// and about the scan and plan results (for the terminal).
+	Event func(engine.Event)
+	// Verbose, if set, receives rsync's messages (warnings and errors).
 	Verbose func(line string)
 	// AfterRun, if set, is called with each finished run (schedule mode).
 	AfterRun func(archive.RunSummary)

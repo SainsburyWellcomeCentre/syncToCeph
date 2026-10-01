@@ -42,51 +42,74 @@ func (d *doctor) add(name, status, message string) {
 
 func (d *doctor) problem(name string, err error) { d.add(name, checkError, ui.Explain(err)) }
 
+// problems counts the checks that failed.
+func (d *doctor) problems() int {
+	n := 0
+	for _, c := range d.checks {
+		if c.Status == checkError {
+			n++
+		}
+	}
+	return n
+}
+
+// print shows every check after its marker.
+func (d *doctor) print(p *ui.Printer) {
+	marks := map[string]string{checkOK: ui.MarkOK, checkNote: ui.MarkNote, checkError: ui.MarkError}
+	for _, c := range d.checks {
+		p.Line(marks[c.Status], c.Message)
+	}
+}
+
+// diagnose runs every check for one profile.
+func diagnose(profile string) *doctor {
+	d := &doctor{}
+	s, cfgErr := loadProfile(profile, nil)
+	if cfgErr != nil {
+		d.problem("config", cfgErr)
+	} else {
+		file, _ := config.ConfigFile(profile)
+		d.add("config", checkOK, ui.DoctorConfigOK(file, s.MachineDir))
+	}
+	d.checkRsync()
+	if cfgErr == nil {
+		d.checkMount(s)
+		d.checkFolders(s)
+		if others := sharingProfiles(s); len(others) > 0 {
+			d.add("profiles", checkNote, ui.SharedMachineFolder(s.MachineDir, append([]string{profile}, others...)))
+		}
+	}
+	d.checkState(profile)
+	d.checkSchedule(s, cfgErr == nil)
+	d.checkService(profile)
+	return d
+}
+
 func newDoctor(g *globals) *cobra.Command {
-	var asJSON bool
+	var asJSON, everyProfile bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: ui.DoctorShort,
 		Long:  ui.DoctorLong,
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			d := &doctor{}
-			s, cfgErr := loadSettings(g, nil)
-			if cfgErr != nil {
-				d.problem("config", cfgErr)
-			} else {
-				file, _ := config.ConfigFile(g.profile)
-				d.add("config", checkOK, ui.DoctorConfigOK(file, s.MachineDir))
+			if everyProfile {
+				return doctorAllProfiles(cmd, g, asJSON)
 			}
-			d.checkRsync()
-			if cfgErr == nil {
-				d.checkMount(s)
-				d.checkFolders(s)
-			}
-			d.checkState(g.profile)
-			d.checkSchedule(s, cfgErr == nil)
-			d.checkService(g.profile)
-			errors := 0
-			for _, c := range d.checks {
-				if c.Status == checkError {
-					errors++
-				}
-			}
+			d := diagnose(g.profile)
 			if asJSON {
 				writeJSON(cmd.OutOrStdout(), map[string]any{"schema_version": JSONSchemaVersion,
-					"profile": g.profile, "problems": errors, "checks": d.checks})
+					"profile": g.profile, "problems": d.problems(), "checks": d.checks})
 			} else {
 				p := printer(cmd, g)
-				marks := map[string]string{checkOK: ui.MarkOK, checkNote: ui.MarkNote, checkError: ui.MarkError}
-				for _, c := range d.checks {
-					p.Line(marks[c.Status], c.Message)
-				}
-				p.Line(ui.MarkResult, ui.DoctorResult(errors))
+				d.print(p)
+				p.Line(ui.MarkResult, ui.DoctorResult(d.problems()))
 			}
-			return exitWith(min(errors, 1))
+			return exitWith(min(d.problems(), 1))
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print machine-readable JSON")
+	cmd.Flags().BoolVar(&everyProfile, "all-profiles", false, "check every profile")
 	return cmd
 }
 
