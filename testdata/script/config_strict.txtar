@@ -1,0 +1,38 @@
+# Without a config there are no built-in data paths: init comes first.
+! exec synctoceph run
+stderr 'no configuration found'
+stderr 'run `synctoceph init`'
+
+# SAFETY: invariant 1: unknown keys are errors; rsync options can never be passed through.
+mkdir archive
+config rsync_options=--delete
+! exec synctoceph run
+stderr 'unknown setting\(s\) .*: rsync_options'
+! exists archive/scope-01
+
+config existing=overwrite
+! exec synctoceph run
+stderr 'the setting existing = "overwrite" is not valid'
+
+config interval=4h at=02:00
+! exec synctoceph run
+stderr 'both interval and at are set'
+
+config source=relative/path
+! exec synctoceph run
+stderr 'use a full path starting with /'
+
+# Command-line mistakes exit with code 2.
+exec sh -c 'synctoceph run --existing 2>/dev/null; test $? -eq 2'
+exec sh -c 'synctoceph nosuchcommand 2>/dev/null; test $? -eq 2'
+exec sh -c 'synctoceph status extra-argument 2>/dev/null; test $? -eq 2'
+! exec synctoceph nosuchcommand
+stderr 'unknown command'
+stderr 'See: synctoceph --help'
+config
+! exec synctoceph run --existing sometimes
+stderr 'use skip or replace'
+
+# Profiles keep separate configs.
+! exec synctoceph --profile ../x status
+stderr 'not a valid profile name'

@@ -1,0 +1,29 @@
+# Files modified within settle_time are deferred, with a clear message.
+mkdir archive
+config settle_time=10m
+age 1h src/old.txt
+! exec synctoceph run
+stdout 'Copied and verified 1 file'
+stdout 'DEFERRED  1 file changed recently or during the sync'
+stdout 'fresh.txt   modified'
+stdout 'once unchanged for 10m'
+stdout 'RESULT    PARTIAL: 1 file is not archived yet. Do not delete it from the source.'
+! exists archive/scope-01/fresh.txt
+exec synctoceph status --deferred
+stdout 'fresh.txt   recently modified, deferred since'
+
+# The exit code for PARTIAL is 3.
+exec sh -c 'synctoceph run >/dev/null; test $? -eq 3'
+
+# Once the file has settled, the next run copies it.
+age 1h src/fresh.txt
+exec synctoceph run
+stdout 'Copied and verified 1 file'
+cmp archive/scope-01/fresh.txt src/fresh.txt
+exec synctoceph status --deferred
+stdout 'No files are deferred'
+
+-- src/old.txt --
+old
+-- src/fresh.txt --
+still being written

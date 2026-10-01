@@ -1,0 +1,35 @@
+# SAFETY: invariant 8: symlinks and special files in the source are skipped and reported.
+mkdir archive outside
+config
+symlink src/link-to-outside -> ../outside
+symlink src/link-to-file -> ../secret.txt
+mkfifo src/pipe
+exec synctoceph run
+stdout 'Copied and verified 1 file'
+stdout '3 files skipped \(never copied\)'
+stdout 'link-to-outside   symlink \(never followed\)'
+stdout 'pipe   special file'
+! exists archive/scope-01/link-to-outside
+! exists archive/scope-01/link-to-file
+! exists archive/scope-01/pipe
+
+# SAFETY: invariant 8: a symlink inside the machine folder is never written through.
+mkdir src/data
+cp src/real.txt src/data/x.txt
+symlink archive/scope-01/data -> ../../outside
+! exec synctoceph run
+stdout 'data/x.txt was not copied: .*symlink'
+stdout 'RESULT    FAILED'
+! exists outside/x.txt
+
+# A symlinked archive folder is refused before anything is written.
+rm archive/scope-01/data
+symlink archive-link -> archive
+config archive=$WORK/archive-link
+! exec synctoceph run
+stdout 'goes through a symlink'
+
+-- src/real.txt --
+real
+-- secret.txt --
+must never be copied

@@ -1,0 +1,61 @@
+# SAFETY: invariant 11: stop asks rsync to stop with SIGINT; the run is INTERRUPTED,
+# exits with 130, and is never reported as verified.
+# A stand-in rsync (bin/rsync) waits until it is interrupted.
+mkdir archive
+chmod 755 bin/rsync
+config
+cp src/a.txt archive-a-before.txt
+env ORIGPATH=$PATH
+env PATH=$WORK/bin:$PATH FAKE_RSYNC_DIR=$WORK
+! exec synctoceph run &run&
+waitfor rsync-ready
+exec synctoceph status
+stdout 'State:      running \(run: copying'
+exec synctoceph stop
+stdout 'Stopped'
+wait run
+stdout 'RESULT    INTERRUPTED'
+exec synctoceph status --json
+stdout '"result": "INTERRUPTED"'
+stdout '"rsync_exit_code": 20'
+stdout '"verified_files": 0'
+stdout '"exit_code": 130'
+
+# Ctrl-C (SIGINT to synctoceph) does the same.
+rm rsync-ready
+! exec synctoceph run &run2&
+waitfor rsync-ready
+kill -INT run2
+wait run2
+stdout 'RESULT    INTERRUPTED'
+
+# If rsync ignores SIGINT, it is killed after the grace period (--timeout).
+rm rsync-ready
+env FAKE_RSYNC_IGNORE_INT=1
+! exec synctoceph run &run3&
+waitfor rsync-ready
+exec synctoceph stop --timeout 1
+stdout 'Stopped'
+wait run3
+exec synctoceph status --json
+stdout '"rsync_exit_code": 137'
+stdout '"result": "INTERRUPTED"'
+
+# With the real rsync the next run completes and verifies.
+env PATH=$ORIGPATH
+exec synctoceph run
+stdout 'Copied and verified 1 file'
+
+-- src/a.txt --
+a
+-- bin/rsync --
+#!/bin/sh
+# Stand-in for rsync, used only to test stopping.
+if [ "$1" = "--version" ]; then
+  echo "rsync  version 3.2.7  protocol version 31"
+  exit 0
+fi
+if [ -n "$FAKE_RSYNC_IGNORE_INT" ]; then trap '' INT; else trap 'exit 20' INT; fi
+echo $$ > "$FAKE_RSYNC_DIR/rsync-pid"
+touch "$FAKE_RSYNC_DIR/rsync-ready"
+while true; do sleep 0.1; done

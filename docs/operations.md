@@ -1,162 +1,108 @@
-# Operations reference
+# Operations
 
-For requirements, installation, and common commands, see the [README](../README.md).
-For viewing and saving directory defaults, see
-[directory configuration](../README.md#view-and-change-directory-defaults).
+Day-to-day use: checking on runs, reading logs, stopping, recovering, and the
+machine-readable outputs.
 
-## Services and cron
+## Checking
 
-`schedule --background` detaches from the terminal. It does not configure startup
-at boot or restart after a crash. System shutdown, WSL shutdown, and service-manager
-policies can stop it. Its startup message confirms that the controller is ready;
-transfer results appear in `status` and `logs`.
-
-The [systemd template](../examples/syncToCeph.service) runs a foreground scheduler
-and restarts the controller on failure. Edit its user, working directory, executable,
-and configuration paths before deploying it. For a virtual environment installation,
-set `ExecStart` to `/path/to/syncToCeph/.venv/bin/syncToCeph` followed by the existing
-arguments. Activation is unnecessary. Direct execution uses `python3` on the
-service's `PATH`; an absolute Python path can be used before the repository launcher.
-
-Alternatively, have cron invoke `run`. For example, run daily at 02:00 in cron's
-configured timezone, replacing `/path/to/syncToCeph` with the project directory:
-
-```cron
-0 2 * * * /path/to/syncToCeph/syncToCeph --config /path/to/syncToCeph/examples/syncToCeph.toml --state-dir /path/to/syncToCeph/.synctoceph-state run
+```
+synctoceph status                # what is running, last result, next run
+synctoceph status --deferred     # files waiting for a later run
+synctoceph status --differing    # archive files that differ and were not replaced
+synctoceph logs -n 100           # recent log lines
+synctoceph logs --run RUN_ID     # the lines of one run
+synctoceph fleet                 # every machine that writes to the archive
 ```
 
-Cron needs a `PATH` containing Python and rsync. Data and mount paths in the
-configuration should be absolute. A cron job or service timer invokes `run`;
-a continuously running service invokes `schedule` without `--background`.
-Installation does not install or enable a service.
+Use `--profile NAME` for a profile other than `default`.
 
-## Storage and locking
+## Before deleting data from an acquisition PC
 
-The destination filesystem must support advisory `flock` locks, atomic file
-replacement, and `fsync`. One controller holds a lock in its state directory;
-each real transfer also holds `DEST/.syncToCeph/archive.lock`. Concurrent clients
-sharing an archive need working cross-client locks and compatible permissions.
-Other writers must honor that lock to participate in coordination.
+```
+synctoceph check-archived /mnt/d/acquisition/session_42
+```
 
-State directories must be owned by the process user and not writable by group or
-others. The state directory and archive metadata root are created with mode
-`0700`; new lock files use `0600` (subject to the process umask).
-The same service UID across machines can use these defaults.
-Permissions and locking behavior need validation on the deployed Ceph mount.
+It lists every file under the path that is not verified in the archive, and
+exits with 0 only if all of them are. It uses the verified-file record and is
+fast. To re-read the files with SHA-256 first:
 
-Source and destination paths must be protected from uncoordinated changes.
-Path validation is not protection against hostile changes during filesystem access.
-The mount check confirms a mount boundary, not Ceph cluster identity or health.
+```
+synctoceph verify /mnt/d/acquisition/session_42
+```
 
-Rsync uses `--checksum`, `--fsync`, `--backup`, a partial directory, and
-`--no-whole-file`. It does not use destination deletion, source removal, or
-in-place writes. Completed files replace their destination paths individually.
-Rsync manages its temporary/partial files; history is retained without automatic
-cleanup. See the [rsync manual](https://download.samba.org/pub/rsync/rsync.1) for
-these option semantics.
-
-When machines transfer different content to the same relative path, the live
-destination contains the most recently transferred version and history retains
-the replaced version. Distinct source namespaces keep both directly visible.
-
-Checksum comparison and SHA-256 verification read file contents even when no
-transfer is needed. The in-memory source manifest grows with the number of entries.
-History and partial files consume additional destination space. Verification
-does not cover later changes or storage failure; durability depends on the
-underlying filesystem and storage configuration.
+Excluded and skipped entries (symlinks, special files) are never archived, so a
+folder containing them is never reported as safe to delete.
 
 ## State and logs
 
-`config show` displays the effective source, destination, state directory, mount
-guard, and derived paths below. It reads `./syncToCeph.toml` when present, or the
-file selected by `--config`. Services should use an absolute `--config` path.
-This view describes future commands; an existing scheduler keeps its startup
-settings until restarted. Before changing `state_dir`, stop the scheduler using
-its current state directory. Changing settings does not move existing logs,
-status, archived data, or history.
+The state folder is `${XDG_STATE_HOME:-~/.local/state}/synctoceph/<profile>/`:
 
-```text
-STATE_DIR/
-  job.lock
-  status.json
-  sync.log
-  sync.log.1 ... sync.log.5
-  startup.log
+| File | Contents |
+|---|---|
+| `status.json` | current state, last run summary, recent runs, bookkeeping between runs |
+| `sync.log` | the log; rotated at 5 MB into `sync.log.1` to `sync.log.5` |
+| `lock` | held while a run or the scheduler is active |
+| `control.sock` | socket for `stop` and live status; exists only while running |
 
-DEST/
-  .syncToCeph/
-    archive.lock
-    history/<run-id>/<previous files>
-  <relative-directory>/.syncToCeph-partial/<unfinished files>
+Each log line has a UTC time, a level, and the run ID in brackets. Line breaks
+in messages (for example in file names) are written as `\n`.
+
+## Stopping
+
+```
+synctoceph stop                # rsync gets 30 s after SIGINT, then is killed
+synctoceph stop --timeout 60
 ```
 
-Status is atomically replaced and fsynced at phase boundaries. It stores up to
-20 recent results, the last verified success, and cumulative logical transferred
-bytes. Changing the source/destination pair resets history and counters in that
-state directory. `sync.log` rotates at 5 MiB with five backups; `startup.log`
-contains the most recent background launch diagnostics. Logs include file paths.
+Ctrl-C in the terminal and SIGTERM (for example from systemd) do the same. The
+run ends INTERRUPTED. An interrupted copy is kept in `.syncToCeph-partial/` in
+the archive and resumed by the next run; files copied before the stop are
+verified by the next run.
 
-| Field | Meaning |
-| --- | --- |
-| `running` | The recorded controller process is alive with the same identity |
-| `job_lock_held` | A process currently holds the state directory's lock |
-| `last_run.transferred_bytes` | Rsync's logical size of transferred files, not network traffic |
-| `last_run.verified_bytes` | Source content checked with SHA-256 during a successful verification |
-| `last_run.verified` | Transfer and all verification checks completed successfully |
-| `last_success_at` | Last verified completion; may precede the latest failed or dry run |
+## Recovery
 
-Interrupted rsync runs can lack final statistics, leaving transferred bytes at
-zero despite partial work. Dry-run byte counts are estimates and do not contribute
-to cumulative totals. Failed verification leaves verified counters at zero.
-Dry runs do not take the destination lock, so previews may reflect concurrent
-archive activity. Monitoring commands do not create a missing state directory.
-
-## Shutdown and recovery
-
-`stop`, `SIGINT`, and `SIGTERM` request controller shutdown. During a transfer,
-the controller sends `SIGINT` to rsync's process group to allow cleanup and partial
-file retention. After 30 seconds it sends `SIGKILL` if the group has not finished.
-Verification checks cancellation between read chunks. Interrupted runs are unverified.
-A blocked filesystem operation can delay shutdown; `stop --timeout` limits how
-long the caller waits, not how long the kernel takes to release blocked I/O.
-
-`stop` checks PID, process start time, and boot identity through a pidfd before
-signalling. This requires [Linux pidfd support](https://docs.python.org/3.11/library/os.html#os.pidfd_open)
-and Python's [signal API](https://docs.python.org/3.11/library/signal.html#signal.pidfd_send_signal).
-Rsync inherits lock descriptors so locks can remain held after a controller crash.
-
-| Status | Action |
-| --- | --- |
-| Failed run | Read `last_run.error` and logs; correct the cause, then rerun or wait for the next scheduled attempt |
-| `stale` | The recorded controller is gone and the job lock is free; a new controller can start |
-| `orphaned` | The controller is gone but a process still holds the lock; inspect remaining processes and let active I/O finish |
-| Missing mount | Restore the configured mount; each subsequent run checks it again |
-
-Lock files remain after shutdown; their existence does not mean the lock is held.
-Deleting an active lock file breaks coordination. Retained partial files are
-available to rsync on the next attempt.
+| Situation | What to do |
+|---|---|
+| A run failed | Read the ERROR lines (`synctoceph status`, `synctoceph logs --run RUN_ID`), fix the cause, run again. Copies that completed are kept and verified. |
+| The computer crashed during a run | Nothing to clean up: the lock is released by the operating system, partial copies wait in `.syncToCeph-partial/`, and only verified files are in the record. Run again. |
+| Files keep being deferred | Something is still writing them, or the clock is wrong. After 24 hours they are shown as a WARNING. |
+| A file differs in the archive | `skip` mode leaves it. To keep both versions: `synctoceph run --existing replace` (the old one goes to history). |
+| An old version is needed | `synctoceph history list`, then `synctoceph history restore RUN_ID PATH --to DIR`. |
+| Data was copied before synctoceph was used | Run `synctoceph verify` once, so those files are recorded as verified. |
 
 ## Exit codes
 
 | Code | Meaning |
-| --- | --- |
-| `0` | Verified real run, successful dry run/control command, or requested scheduler shutdown |
-| `1` | Configuration, validation, verification, or other operational failure |
-| `2` | CLI syntax error; rsync can also return this code for a protocol error |
-| `130` | Interrupted active run |
-| Other positive rsync codes | Propagated for failed one-off transfers and saved in scheduled results |
+|---|---|
+| 0 | OK |
+| 1 | FAILED (details in `synctoceph status --json`; rsync's own code is in `rsync_exit_code`). For `verify` and `check-archived`: not every file is verified. `doctor`: problems found. |
+| 2 | Command-line usage error |
+| 3 | PARTIAL: some files were deferred |
+| 130 | INTERRUPTED |
 
-`last_run.rsync_exit_code` records rsync's original result when available, including
-codes `23` (partial transfer due to error) and `24` (vanished source files). Both
-leave the run unverified. Scheduled controllers continue after transfer errors; process
-liveness alone does not establish a successful transfer.
+## Machine-readable output
 
-## Architecture
+Every read command accepts `--json`: `status`, `logs`, `doctor`, `verify`,
+`check-archived`, `history list`, `fleet`, `service status` and `version`.
+Each output has `"schema_version": 1`. The run summary (in `status --json`
+under `status.last_run`, and in the archive under `.syncToCeph/runs/`) has
+these fields:
 
-| Module | Responsibility |
-| --- | --- |
-| `cli.py` | Arguments, configuration precedence, detachment, status, logs, stop |
-| `config.py` | TOML validation, defaults, path separation, schedule parsing |
-| `engine.py` | Source manifest, rsync subprocess, cancellation, SHA-256 verification |
-| `scheduler.py` | Controller lifecycle, signals, interval and daily schedules |
-| `state.py` | Locks, atomic JSON, rotating logs, Linux process identity |
+| Field | Meaning |
+|---|---|
+| `run_id`, `machine_name`, `hostname`, `profile`, `synctoceph_version` | identity of the run |
+| `source`, `archive`, `started_at`, `finished_at`, `dry_run`, `existing`, `verify` | settings and times |
+| `result`, `exit_code` | OK, PARTIAL, FAILED or INTERRUPTED, and the exit code |
+| `scanned_files`, `scanned_bytes`, `excluded_files` | what the scan found |
+| `planned_files`, `planned_bytes`, `replaced_files` | what was to be copied |
+| `copied_files`, `copied_bytes`, `verified_files`, `verified_bytes` | what was copied and verified |
+| `up_to_date_files`, `unverified_files` | files already archived, with and without a verification record |
+| `deferred_count`, `deferred` | deferred files (`path`, `reason`, `modified_at`, `since`) |
+| `differing_count`, `differing` | archive files that differ and were not replaced |
+| `skipped_count`, `skipped` | symlinks, special files and reserved names (`path`, `reason`) |
+| `error_count`, `errors` | problems, each with its explanation |
+| `would_copy` | dry runs only: files that would be copied |
+| `rsync_exit_code`, `history_dir`, `last_success_at` | rsync's exit code, where replaced files went, last OK or PARTIAL run |
+
+In the archive, lists are cut to 100 entries; the `*_count` fields are always
+complete. Changing the meaning of a field requires a new `schema_version`.

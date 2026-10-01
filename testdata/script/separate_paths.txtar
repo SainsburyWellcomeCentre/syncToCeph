@@ -1,0 +1,17 @@
+# SAFETY: invariant 7: source, archive and state must be separate, non-nested folders.
+mkdir src/archive
+config archive=$WORK/src/archive
+! exec synctoceph run
+stderr 'the source .* and the archive .* overlap'
+! exists src/archive/scope-01
+
+mkdir archive
+config
+env XDG_STATE_HOME=$WORK/archive/state
+! exec synctoceph run
+stderr 'the archive .* and the state folder .* overlap'
+! exists archive/scope-01
+! exists archive/state
+
+-- src/a.txt --
+a

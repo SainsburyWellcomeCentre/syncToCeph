@@ -1,0 +1,32 @@
+# check-archived answers "is it safe to delete this from the acquisition PC?"
+mkdir archive
+config exclude=["Thumbs.db"]
+exec synctoceph run
+stdout 'Copied and verified 2 files'
+exec synctoceph check-archived src/session1
+stdout 'SAFE: every file under src/session1 \(1 file\) is archived and verified'
+
+# A new file makes the folder unsafe to delete; the exit code is 1.
+cp src/session1/a.tif src/session1/new.tif
+! exec synctoceph check-archived src/session1
+stdout 'NOT-ARCHIVED  session1/new.tif'
+stdout 'NOT SAFE: 1 of 2 files under src/session1 is not verified'
+stdout 'Not archived: run synctoceph run.'
+
+# Excluded files are never archived, so they are never "safe".
+! exec synctoceph check-archived src
+stdout 'EXCLUDED      Thumbs.db'
+
+# Paths outside the source are refused.
+! exec synctoceph check-archived archive
+stderr 'is not inside the source folder'
+
+exec synctoceph check-archived --json src/other.txt
+stdout '"all_verified": true'
+
+-- src/session1/a.tif --
+a
+-- src/other.txt --
+other
+-- src/Thumbs.db --
+thumbnail cache

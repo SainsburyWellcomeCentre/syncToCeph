@@ -1,0 +1,46 @@
+# init writes a config from flags, checking every answer.
+mkdir archive src
+exec synctoceph init --yes --machine-name scope-01 --source $WORK/src --archive $WORK/archive --schedule 02:00
+stdout 'Saved .*home/.config/synctoceph/default.toml'
+stdout 'Data will be copied to .*archive/scope-01'
+grep '^at            = "02:00"' home/.config/synctoceph/default.toml
+grep '^exclude       = \["Thumbs.db", "desktop.ini", "~\$\*"\]' home/.config/synctoceph/default.toml
+exec synctoceph doctor
+stdout 'Schedule: daily at 02:00'
+
+# It never overwrites an existing config by accident.
+! exec synctoceph init --yes --source $WORK/src --archive $WORK/archive
+stderr 'a configuration already exists'
+
+# SAFETY: invariant 6: the archive folder must exist; init never creates it.
+! exec synctoceph init --yes --force --source $WORK/src --archive $WORK/missing
+stderr 'does not exist'
+! exists missing
+
+# Answers can be typed in; an empty answer takes the default shown.
+stdin answers.txt
+exec synctoceph --profile scope2 init
+stdout 'Machine name'
+stdout 'Saved .*scope2.toml'
+grep '^interval      = "30m"' home/.config/synctoceph/scope2.toml
+grep '^machine_name  = "typed-name"' home/.config/synctoceph/scope2.toml
+
+# A wrong answer is explained and asked again.
+stdin retry.txt
+exec synctoceph --profile scope3 init
+stdout 'does not exist or cannot be opened'
+stdout 'Saved .*scope3.toml'
+
+-- answers.txt --
+typed-name
+src
+archive
+none
+30m
+-- retry.txt --
+scope-3
+/no/such/folder
+src
+archive
+
+4h

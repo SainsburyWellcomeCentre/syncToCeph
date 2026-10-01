@@ -1,0 +1,34 @@
+# SAFETY: invariant 10: rsync inherits the lock, so even if synctoceph itself is killed,
+# no second run can start while that rsync is still running.
+mkdir archive
+chmod 755 bin/rsync
+config
+env ORIGPATH=$PATH
+env PATH=$WORK/bin:$PATH FAKE_RSYNC_DIR=$WORK
+! exec synctoceph run &run&
+waitfor rsync-ready
+kill -KILL run
+wait run
+! exec synctoceph run
+stderr 'already running'
+exec synctoceph status
+stdout 'State:      running'
+
+# Once that rsync has exited, runs work again.
+killpid rsync-pid
+env PATH=$ORIGPATH
+exec synctoceph run
+stdout 'Copied and verified 1 file'
+
+-- src/a.txt --
+a
+-- bin/rsync --
+#!/bin/sh
+# Stand-in for rsync that keeps running until killed.
+if [ "$1" = "--version" ]; then
+  echo "rsync  version 3.2.7  protocol version 31"
+  exit 0
+fi
+echo $$ > "$FAKE_RSYNC_DIR/rsync-pid"
+touch "$FAKE_RSYNC_DIR/rsync-ready"
+while true; do sleep 0.1; done

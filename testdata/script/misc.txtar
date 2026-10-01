@@ -1,0 +1,49 @@
+# version, completion and --json outputs.
+exec synctoceph version
+stdout '^synctoceph dev \(commit unknown, built unknown, go1\.'
+exec synctoceph version --json
+stdout '"schema_version": 1'
+exec synctoceph completion bash
+stdout 'bash completion V2 for synctoceph'
+exec synctoceph completion zsh
+stdout '#compdef synctoceph'
+! exec synctoceph completion fish
+stderr 'unsupported shell'
+
+# Read-only commands never create the state folder.
+exec synctoceph status
+stdout 'State:      idle'
+stdout 'Last run:   none yet'
+exec synctoceph logs
+stdout 'The log is empty'
+exec synctoceph stop
+stdout 'Nothing is running'
+exec synctoceph status --json
+stdout '"running": false'
+! exists home/.local/state/synctoceph
+
+# -q prints only the result.
+mkdir archive
+config
+exec synctoceph run -q
+! stdout 'Scanning'
+stdout '^RESULT    OK'
+
+# -v shows every rsync line.
+cp src/a.txt src/b.txt
+exec synctoceph run -v
+stdout '>f\+\+\+\+\+\+\+\+\+ b.txt'
+! exec synctoceph run -v -q
+stderr 'cannot be used together'
+
+# logs --run shows the lines of one run.
+exec synctoceph logs --json
+stdout '"lines": \['
+
+# The state folder must not be on a Windows drive.
+env XDG_STATE_HOME=/mnt/z/state
+! exec synctoceph run
+stderr 'is on a Windows drive'
+
+-- src/a.txt --
+a

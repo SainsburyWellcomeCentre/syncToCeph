@@ -1,0 +1,55 @@
+# service install writes a systemd user unit and enables it. Stand-in
+# systemctl and loginctl programs record how they were called.
+mkdir archive
+chmod 755 bin/systemctl
+chmod 755 bin/loginctl
+env PATH=$WORK/bin:$PATH CALLS=$WORK/calls.txt USER=tester
+config
+! exec synctoceph service install --manager systemd
+stderr 'no schedule is set'
+
+config interval=4h
+exec synctoceph service install --manager systemd --print
+stdout 'Would write .*systemd/user/synctoceph-default.service'
+stdout 'ExecStart=.* schedule --profile default'
+! exists home/.config/systemd/user/synctoceph-default.service
+
+exec synctoceph service install --manager systemd
+stdout 'Automatic runs are set up: systemd user service synctoceph-default.service'
+stdout 'sudo loginctl enable-linger'
+grep 'ExecStart=.* schedule --profile default' home/.config/systemd/user/synctoceph-default.service
+grep 'TimeoutStopSec=60' home/.config/systemd/user/synctoceph-default.service
+grep '^--user daemon-reload$' calls.txt
+grep '^--user enable --now synctoceph-default.service$' calls.txt
+
+exec synctoceph service status
+stdout 'systemd user service: synctoceph-default.service, enabled, active'
+
+exec synctoceph service uninstall
+stdout 'Removed synctoceph-default.service'
+! exists home/.config/systemd/user/synctoceph-default.service
+grep '^--user disable --now synctoceph-default.service$' calls.txt
+exec synctoceph service uninstall
+stdout 'No automatic runs were found'
+
+# On WSL without systemd, a Windows Task Scheduler task runs synctoceph run.
+env WSL_DISTRO_NAME=Ubuntu
+exec synctoceph service install --manager task-scheduler --print
+stdout 'schtasks.exe /Create /F /TN synctoceph-default /TR "wsl.exe -d Ubuntu -- .* run --profile default --quiet" /SC HOURLY /MO 4'
+config at=02:00
+exec synctoceph service install --manager task-scheduler --print
+stdout '/SC DAILY /ST 02:00'
+
+-- src/a.txt --
+a
+-- bin/systemctl --
+#!/bin/sh
+echo "$*" >> "$CALLS"
+case "$2" in
+  is-enabled) echo enabled ;;
+  is-active) echo active ;;
+esac
+exit 0
+-- bin/loginctl --
+#!/bin/sh
+echo no

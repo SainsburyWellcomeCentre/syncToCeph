@@ -1,0 +1,29 @@
+# doctor checks the setup and changes nothing.
+mkdir archive
+config interval=4h
+exec synctoceph doctor
+stdout 'OK        Configuration .* is valid'
+stdout 'OK        rsync 3\.'
+stdout 'OK        Source .* exists and is readable'
+stdout 'will be created by the first run'
+stdout 'Schedule: every 4h'
+stdout 'RESULT    No problems found.'
+! exists archive/scope-01
+! exists home/.local/state/synctoceph
+
+# A missing mount is explained, with the commands to mount it.
+mkdir mnt/z/lab-archive
+config archive=$WORK/mnt/z/lab-archive require_mount=$WORK/mnt/z
+! exec synctoceph doctor
+stdout 'ERROR     .*mnt/z is not mounted'
+stdout 'sudo mount -t cifs'
+stdout 'RESULT    1 problem found'
+
+# Problems with the config are reported, and the other checks still run.
+config bogus=1
+! exec synctoceph doctor --json
+stdout '"problems": 1'
+stdout '"name": "rsync"'
+
+-- src/a.txt --
+a

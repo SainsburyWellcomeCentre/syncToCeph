@@ -1,0 +1,26 @@
+# Exclude patterns are matched by synctoceph, never passed to rsync.
+mkdir archive
+# (a name with $ is created here, because file names in this archive are expanded)
+cp src/keep.txt 'src/sub/~$report.docx'
+config 'exclude=["Thumbs.db","~$*","*.tmp","scratch"]'
+exec synctoceph run
+stdout 'Copied and verified 2 files'
+exists archive/scope-01/keep.txt
+exists archive/scope-01/sub/data.bin
+! exists archive/scope-01/Thumbs.db
+! exists 'archive/scope-01/sub/~$report.docx'
+! exists archive/scope-01/sub/x.tmp
+! exists archive/scope-01/scratch
+exec synctoceph logs -n 100
+! stdout '--exclude'
+
+-- src/keep.txt --
+keep
+-- src/Thumbs.db --
+x
+-- src/sub/data.bin --
+data
+-- src/sub/x.tmp --
+tmp
+-- src/scratch/big.raw --
+raw

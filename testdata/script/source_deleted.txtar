@@ -1,0 +1,20 @@
+# SAFETY: invariant 1: deleting files from the source never deletes them from the archive.
+mkdir archive
+config
+exec synctoceph run
+stdout 'Copied and verified 3 files'
+rm src/session1
+exec synctoceph run
+stdout 'RESULT    OK'
+exists archive/scope-01/session1/a.tif
+exists archive/scope-01/session1/b.tif
+
+# check-archived still says the remaining source is safe.
+exec synctoceph check-archived src
+stdout 'SAFE'
+
+-- src/session1/a.tif --
+a
+-- src/session1/b.tif --
+b
+-- src/keep.txt --

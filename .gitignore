@@ -1,9 +1,4 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-build/
-dist/
-.synctoceph-state/
+# Program built with `go build ./cmd/synctoceph` in the repository root
+/synctoceph
+# Scratch folder for manual experiments
 .test-tmp/
-/syncToCeph.toml

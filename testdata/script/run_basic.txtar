@@ -1,0 +1,41 @@
+# A first run copies every file and verifies it with SHA-256.
+mkdir archive
+config
+snapshot src before.txt
+exec synctoceph run
+stdout 'Copied and verified 3 files'
+stdout 'RESULT    OK: everything that needed copying is archived and verified'
+cmp archive/scope-01/a.txt src/a.txt
+cmp 'archive/scope-01/session 1/stack_0001.tif' 'src/session 1/stack_0001.tif'
+exists archive/scope-01/.syncToCeph/manifest.jsonl
+exists archive/scope-01/.syncToCeph/runs/latest.json
+
+# SAFETY: invariant 2: the source is only read, never changed.
+snapshot src after.txt
+cmp before.txt after.txt
+
+# A second run finds nothing new to copy.
+exec synctoceph run
+stdout 'Nothing new to copy; 3 files already archived and verified'
+
+# status and logs describe the last run.
+exec synctoceph status
+stdout 'Last run:   OK'
+stdout 'Last successful sync'
+exec synctoceph logs -n 200
+stdout 'Run finished: OK'
+exec synctoceph status --json
+stdout '"schema_version": 1'
+stdout '"result": "OK"'
+
+# Nothing depends on the folder the command is run from.
+cd src
+exec synctoceph status
+stdout 'Last run:   OK'
+
+-- src/a.txt --
+alpha
+-- src/b.txt --
+beta
+-- src/session 1/stack_0001.tif --
+pretend image data

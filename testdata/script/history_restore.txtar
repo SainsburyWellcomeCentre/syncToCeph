@@ -1,0 +1,27 @@
+# history restore brings back the previous version into a folder outside the archive.
+mkdir archive
+config existing=replace
+exec synctoceph run
+cp v2.txt src/data/a.txt
+age 1h src/data/a.txt
+exec synctoceph run
+stdout 'Copied and verified 1 file'
+exec synctoceph history list --json
+stdout '"files": 1'
+# The run ID is the only folder in history; restore it with a helper script.
+exec sh -c 'synctoceph history restore "$(ls archive/scope-01/.syncToCeph/history)" data --to "$WORK/restored"'
+stdout 'Restored 1 file'
+cmp restored/data/a.txt v1.txt
+# Existing files are never overwritten, and the archive is never a target.
+! exec sh -c 'synctoceph history restore "$(ls archive/scope-01/.syncToCeph/history)" data --to "$WORK/restored"'
+stderr 'never overwritten'
+! exec sh -c 'synctoceph history restore "$(ls archive/scope-01/.syncToCeph/history)" data --to "$WORK/archive/elsewhere"'
+stderr 'inside the archive'
+cmp archive/scope-01/data/a.txt v2.txt
+
+-- src/data/a.txt --
+version one
+-- v1.txt --
+version one
+-- v2.txt --
+version two is longer

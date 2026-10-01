@@ -1,0 +1,44 @@
+# The scheduler runs on the interval, counted from the end of each run.
+mkdir archive
+config interval=1s
+exec synctoceph schedule --immediate &sched&
+waitlog 2 'Run finished: OK'
+exec synctoceph status
+stdout 'State:      (waiting|running)'
+stdout 'Schedule:   every 1s'
+
+# SAFETY: invariant 10: one run per profile at a time.
+! exec synctoceph run
+stderr 'synctoceph is already running for profile default \(schedule, process [0-9]+\)'
+
+exec synctoceph stop
+stdout 'Stopped \(profile default\)'
+wait sched
+stdout 'Scheduler started for profile default \(every 1s\)'
+stdout 'Copied and verified 1 file'
+exec synctoceph status
+stdout 'State:      stopped'
+exec synctoceph stop
+stdout 'Nothing is running for profile default'
+
+# --immediate runs at once without using up that day's daily run.
+rm home/.local/state/synctoceph/default/sync.log
+config at=03:00
+exec synctoceph schedule --immediate &daily&
+waitlog 'Run finished'
+waitlog 'Next run at'
+exec synctoceph status --json
+stdout '"state": "waiting"'
+! stdout 'last_daily_date'
+kill -INT daily
+wait daily
+exec synctoceph status
+stdout 'State:      stopped'
+
+# Without a schedule, schedule explains what to add.
+config
+! exec synctoceph schedule
+stderr 'no schedule is set'
+
+-- src/a.txt --
+a

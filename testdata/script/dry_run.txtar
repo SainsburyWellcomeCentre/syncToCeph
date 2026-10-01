@@ -1,0 +1,26 @@
+# SAFETY: invariant 9: a dry run writes nothing to the archive.
+mkdir archive
+config
+snapshot archive before.txt
+exec synctoceph run --dry-run
+stdout 'Dry run: nothing was written to the archive'
+stdout 'Would copy 2 files'
+stdout 'RESULT    OK \(dry run\)'
+snapshot archive after.txt
+cmp before.txt after.txt
+! exists archive/scope-01
+
+# dry_run = true in the config does the same.
+config dry_run=true
+exec synctoceph run
+stdout 'Dry run'
+! exists archive/scope-01
+
+# The flag overrides the config file.
+exec synctoceph run --dry-run=false
+stdout 'Copied and verified 2 files'
+
+-- src/a.txt --
+a
+-- src/sub/b.txt --
+b
