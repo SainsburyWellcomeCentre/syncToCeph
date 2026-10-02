@@ -43,8 +43,9 @@ Exit code 0 means no problems were found.`
 	RunLong  = `Runs one sync: scans the source, copies files that are not in the archive yet,
 and verifies every copy with SHA-256.
 
-Files already in the archive are left alone unless --existing replace is
-given; then the old version is kept under .syncToCeph/history/<run-id>/.
+Files already in the archive are left alone unless the config has
+existing = "replace" or --existing replace is given; then the old version is
+kept under .syncToCeph/history/<run-id>/.
 Files modified within settle_time, or that change during the run, are
 deferred to a later run.
 

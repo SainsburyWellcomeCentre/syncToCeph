@@ -18,17 +18,17 @@ synctoceph stop [flags]
 ### Options
 
 ```
-  -h, --help          help for stop
-      --timeout int   seconds rsync gets to stop before it is killed (default 30)
+  -h, --help              help for stop
+      --timeout SECONDS   give rsync SECONDS seconds to stop before it is killed (default 30)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --no-color         never use colour (NO_COLOR is also honoured)
-      --profile string   configuration profile, for several jobs on one computer (default "default")
-  -q, --quiet            print only the result and errors
-  -v, --verbose          list every file copied and verified (default from config: verbose = true); --verbose=false turns it off
+      --no-color       never use colour (NO_COLOR is also honoured)
+      --profile NAME   use the profile (job) NAME; its settings are in ~/.config/synctoceph/NAME.toml (default "default")
+  -q, --quiet          print only the result and errors
+  -v, --verbose        list every file copied and verified; --verbose=false turns it off (default: the config's verbose setting, true unless changed)
 ```
 
 ### SEE ALSO

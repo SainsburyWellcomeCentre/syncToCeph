@@ -24,23 +24,23 @@ synctoceph init [flags]
 ### Options
 
 ```
-      --archive string         root folder of the lab archive (must exist)
-      --force                  replace an existing configuration
-  -h, --help                   help for init
-      --machine-name string    name of this computer's folder in the archive (default: host name)
-      --require-mount string   mount point that must be mounted ("none" for no check)
-      --schedule string        how often to run: an interval such as 4h, a daily time such as 02:00, or "none"
-      --source string          folder to copy from
-  -y, --yes                    do not ask; use flags and defaults
+      --archive DIR         root folder DIR of the lab archive (must already exist)
+      --force               replace an existing configuration
+  -h, --help                help for init
+      --machine-name NAME   folder NAME for this computer in the archive (default: the host name)
+      --require-mount DIR   only run when DIR is mounted; "none" for no check (default: the network mount holding the archive, if any)
+      --schedule WHEN       when to run: WHEN is an interval such as 4h, a daily time such as 02:00, or "none" (default: 4h)
+      --source DIR          folder DIR to copy from
+  -y, --yes                 do not ask; use flags and defaults
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --no-color         never use colour (NO_COLOR is also honoured)
-      --profile string   configuration profile, for several jobs on one computer (default "default")
-  -q, --quiet            print only the result and errors
-  -v, --verbose          list every file copied and verified (default from config: verbose = true); --verbose=false turns it off
+      --no-color       never use colour (NO_COLOR is also honoured)
+      --profile NAME   use the profile (job) NAME; its settings are in ~/.config/synctoceph/NAME.toml (default "default")
+  -q, --quiet          print only the result and errors
+  -v, --verbose        list every file copied and verified; --verbose=false turns it off (default: the config's verbose setting, true unless changed)
 ```
 
 ### SEE ALSO

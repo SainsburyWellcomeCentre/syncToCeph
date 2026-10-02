@@ -18,17 +18,17 @@ synctoceph logs [flags]
 ```
   -h, --help         help for logs
       --json         print machine-readable JSON
-  -n, --lines int    number of lines to show (0 = all) (default 50)
-      --run string   show only the lines of this run ID
+  -n, --lines N      show the last N lines; 0 shows all (default 50)
+      --run RUN_ID   show only the lines of run RUN_ID
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --no-color         never use colour (NO_COLOR is also honoured)
-      --profile string   configuration profile, for several jobs on one computer (default "default")
-  -q, --quiet            print only the result and errors
-  -v, --verbose          list every file copied and verified (default from config: verbose = true); --verbose=false turns it off
+      --no-color       never use colour (NO_COLOR is also honoured)
+      --profile NAME   use the profile (job) NAME; its settings are in ~/.config/synctoceph/NAME.toml (default "default")
+  -q, --quiet          print only the result and errors
+  -v, --verbose        list every file copied and verified; --verbose=false turns it off (default: the config's verbose setting, true unless changed)
 ```
 
 ### SEE ALSO

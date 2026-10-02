@@ -83,7 +83,7 @@ func newHistory(g *globals) *cobra.Command {
 			return nil
 		},
 	}
-	restore.Flags().StringVar(&to, "to", "", "folder to restore into (must be outside the archive)")
+	restore.Flags().StringVar(&to, "to", "", "restore into folder `DIR` (must be outside the archive)")
 	cmd.AddCommand(list, restore)
 	return cmd
 }
@@ -123,7 +123,7 @@ func newFleet(g *globals) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&root, "archive", "", "archive root to read (default: from the config)")
+	cmd.Flags().StringVar(&root, "archive", "", "read the archive root `DIR` instead of the one in the config")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print machine-readable JSON")
 	return cmd
 }

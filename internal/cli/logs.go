@@ -49,8 +49,8 @@ func newLogs(g *globals) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().IntVarP(&lines, "lines", "n", 50, "number of lines to show (0 = all)")
-	cmd.Flags().StringVar(&runID, "run", "", "show only the lines of this run ID")
+	cmd.Flags().IntVarP(&lines, "lines", "n", 50, "show the last `N` lines; 0 shows all")
+	cmd.Flags().StringVar(&runID, "run", "", "show only the lines of run `RUN_ID`")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print machine-readable JSON")
 	return cmd
 }
@@ -100,6 +100,6 @@ func newStop(g *globals) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&timeout, "timeout", int(engine.KillGrace/time.Second), "seconds rsync gets to stop before it is killed")
+	cmd.Flags().IntVar(&timeout, "timeout", int(engine.KillGrace/time.Second), "give rsync `SECONDS` seconds to stop before it is killed")
 	return cmd
 }

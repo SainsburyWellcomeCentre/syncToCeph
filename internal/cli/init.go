@@ -117,11 +117,11 @@ func newInit(g *globals) *cobra.Command {
 		},
 	}
 	fl := cmd.Flags()
-	fl.StringVar(&f.machine, "machine-name", "", "name of this computer's folder in the archive (default: host name)")
-	fl.StringVar(&f.source, "source", "", "folder to copy from")
-	fl.StringVar(&f.archive, "archive", "", "root folder of the lab archive (must exist)")
-	fl.StringVar(&f.mount, "require-mount", "", `mount point that must be mounted ("none" for no check)`)
-	fl.StringVar(&f.schedule, "schedule", "", `how often to run: an interval such as 4h, a daily time such as 02:00, or "none"`)
+	fl.StringVar(&f.machine, "machine-name", "", "folder `NAME` for this computer in the archive (default: the host name)")
+	fl.StringVar(&f.source, "source", "", "folder `DIR` to copy from")
+	fl.StringVar(&f.archive, "archive", "", "root folder `DIR` of the lab archive (must already exist)")
+	fl.StringVar(&f.mount, "require-mount", "", "only run when `DIR` is mounted; \"none\" for no check (default: the network mount holding the archive, if any)")
+	fl.StringVar(&f.schedule, "schedule", "", "when to run: `WHEN` is an interval such as 4h, a daily time such as 02:00, or \"none\" (default: 4h)")
 	fl.BoolVarP(&f.yes, "yes", "y", false, "do not ask; use flags and defaults")
 	fl.BoolVar(&f.force, "force", false, "replace an existing configuration")
 	return cmd

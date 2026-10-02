@@ -57,8 +57,8 @@ func newRun(g *globals) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, "show what would be copied; write nothing to the archive")
-	cmd.Flags().StringVar(&f.existing, "existing", "", "files already in the archive that differ: skip or replace (default from config: skip)")
-	cmd.Flags().StringVar(&f.verify, "verify", "", "what to check with SHA-256: new (files copied now) or all (default from config: new)")
+	cmd.Flags().StringVar(&f.existing, "existing", "", "`MODE` for files already in the archive that differ: skip or replace (default: the config's existing setting, skip unless changed)")
+	cmd.Flags().StringVar(&f.verify, "verify", "", "`MODE` for SHA-256 checks: new (only files copied in this run) or all (default: the config's verify setting, new unless changed)")
 	cmd.Flags().BoolVar(&f.allProfiles, "all-profiles", false, "run every profile, one after another")
 	return cmd
 }

@@ -9,8 +9,9 @@ Copy new files to the archive and verify them
 Runs one sync: scans the source, copies files that are not in the archive yet,
 and verifies every copy with SHA-256.
 
-Files already in the archive are left alone unless --existing replace is
-given; then the old version is kept under .syncToCeph/history/<run-id>/.
+Files already in the archive are left alone unless the config has
+existing = "replace" or --existing replace is given; then the old version is
+kept under .syncToCeph/history/<run-id>/.
 Files modified within settle_time, or that change during the run, are
 deferred to a later run.
 
@@ -31,20 +32,20 @@ synctoceph run [flags]
 ### Options
 
 ```
-      --all-profiles      run every profile, one after another
-      --dry-run           show what would be copied; write nothing to the archive
-      --existing string   files already in the archive that differ: skip or replace (default from config: skip)
-  -h, --help              help for run
-      --verify string     what to check with SHA-256: new (files copied now) or all (default from config: new)
+      --all-profiles    run every profile, one after another
+      --dry-run         show what would be copied; write nothing to the archive
+      --existing MODE   MODE for files already in the archive that differ: skip or replace (default: the config's existing setting, skip unless changed)
+  -h, --help            help for run
+      --verify MODE     MODE for SHA-256 checks: new (only files copied in this run) or all (default: the config's verify setting, new unless changed)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --no-color         never use colour (NO_COLOR is also honoured)
-      --profile string   configuration profile, for several jobs on one computer (default "default")
-  -q, --quiet            print only the result and errors
-  -v, --verbose          list every file copied and verified (default from config: verbose = true); --verbose=false turns it off
+      --no-color       never use colour (NO_COLOR is also honoured)
+      --profile NAME   use the profile (job) NAME; its settings are in ~/.config/synctoceph/NAME.toml (default "default")
+  -q, --quiet          print only the result and errors
+  -v, --verbose        list every file copied and verified; --verbose=false turns it off (default: the config's verbose setting, true unless changed)
 ```
 
 ### SEE ALSO

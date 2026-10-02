@@ -86,7 +86,7 @@ func newServiceInstall(g *globals) *cobra.Command {
 			return exitWith(min(failed, 1))
 		},
 	}
-	cmd.Flags().StringVar(&manager, "manager", service.ManagerAuto, "auto, systemd or task-scheduler")
+	cmd.Flags().StringVar(&manager, "manager", service.ManagerAuto, "use the service manager `NAME`: auto, systemd or task-scheduler")
 	cmd.Flags().BoolVar(&printOnly, "print", false, "only show what would be set up")
 	cmd.Flags().BoolVar(&everyProfile, "all-profiles", false, "set up automatic runs for every profile that has a schedule")
 	return cmd

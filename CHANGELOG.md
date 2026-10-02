@@ -47,6 +47,12 @@ All notable changes to this project are listed here. The format follows
 
 ### Changed
 
+- Clearer flag help: value placeholders such as `--profile NAME`,
+  `--source DIR` and `--timeout SECONDS` instead of `string` and `int`;
+  `--profile` says where the profile's settings are, so `(default "default")`
+  reads as the profile named "default"; `init` shows the defaults for
+  `--schedule` and `--require-mount`; `run` help mentions the `existing`
+  config setting as well as `--existing replace`.
 - `-v` no longer prints rsync's raw `>f+++++++++` lines; they are in the log
   (`synctoceph logs`). rsync warnings and errors are still shown.
 - `./uninstall.sh --purge` lists everything it will delete and asks for

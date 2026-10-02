@@ -18,17 +18,17 @@ synctoceph history restore RUN_ID PATH --to DIR [flags]
 ### Options
 
 ```
-  -h, --help        help for restore
-      --to string   folder to restore into (must be outside the archive)
+  -h, --help     help for restore
+      --to DIR   restore into folder DIR (must be outside the archive)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --no-color         never use colour (NO_COLOR is also honoured)
-      --profile string   configuration profile, for several jobs on one computer (default "default")
-  -q, --quiet            print only the result and errors
-  -v, --verbose          list every file copied and verified (default from config: verbose = true); --verbose=false turns it off
+      --no-color       never use colour (NO_COLOR is also honoured)
+      --profile NAME   use the profile (job) NAME; its settings are in ~/.config/synctoceph/NAME.toml (default "default")
+  -q, --quiet          print only the result and errors
+  -v, --verbose        list every file copied and verified; --verbose=false turns it off (default: the config's verbose setting, true unless changed)
 ```
 
 ### SEE ALSO
