@@ -1,9 +1,9 @@
-// This file checks paths inside the archive before anything is written to or
-// read from them. A symlink in the archive could redirect a copy to somewhere
-// else entirely, so synctoceph refuses any path in the archive that passes
-// through a symlink, and any place where the archive has a file but the
+// This file checks paths on the destination before anything is written to or
+// read from them. A symlink on the destination could redirect a copy to
+// somewhere else entirely, so synctoceph refuses any destination path that
+// passes through a symlink, and any place where the destination has a file but the
 // source has a folder (or the other way round).
-package archive
+package destination
 
 import (
 	"errors"
@@ -16,7 +16,7 @@ import (
 )
 
 // ErrConflict marks a path that cannot be written safely.
-var ErrConflict = errors.New("archive path conflict")
+var ErrConflict = errors.New("destination path conflict")
 
 // conflictf returns an ErrConflict with a description.
 func conflictf(format string, args ...any) error {
@@ -26,7 +26,7 @@ func conflictf(format string, args ...any) error {
 // NoSymlinks checks that no part of an absolute path is a symlink, from the
 // filesystem root down to the path itself. Missing parts are fine.
 func NoSymlinks(path string) error {
-	// SAFETY: invariant 8 (symlinks on archive paths rejected).
+	// SAFETY: invariant 8 (symlinks on destination paths rejected).
 	current := "/"
 	for _, part := range strings.Split(strings.Trim(filepath.Clean(path), "/"), "/") {
 		if part == "" {
@@ -47,14 +47,14 @@ func NoSymlinks(path string) error {
 	return nil
 }
 
-// PathChecker checks folders below a machine folder, remembering results so
+// PathChecker checks folders below the destination, remembering results so
 // that each folder is examined only once per run.
 type PathChecker struct {
 	root string
 	seen map[string]error
 }
 
-// NewPathChecker returns a checker for paths below root (a machine folder,
+// NewPathChecker returns a checker for paths below root (the destination,
 // already checked with NoSymlinks).
 func NewPathChecker(root string) *PathChecker {
 	return &PathChecker{root: root, seen: map[string]error{}}
@@ -63,7 +63,7 @@ func NewPathChecker(root string) *PathChecker {
 // CheckParents checks every folder between the root and the relative path
 // rel: each must be missing or a real folder (not a symlink, not a file).
 func (c *PathChecker) CheckParents(rel string) error {
-	// SAFETY: invariant 8 (symlinks on archive paths rejected).
+	// SAFETY: invariant 8 (symlinks on destination paths rejected).
 	dir := filepath.Dir(rel)
 	if dir == "." {
 		return nil
@@ -98,14 +98,14 @@ func (c *PathChecker) checkFolder(rel string) error {
 	case err != nil:
 		return fmt.Errorf("checking %s: %w", full, err)
 	case info.Mode()&os.ModeSymlink != 0:
-		return conflictf("archive folder %s is a symlink", full)
+		return conflictf("destination folder %s is a symlink", full)
 	case !info.IsDir():
-		return conflictf("the archive has a file at %s where the source has a folder", full)
+		return conflictf("the destination has a file at %s where the source has a folder", full)
 	}
 	return nil
 }
 
-// OpenRegular opens an archive file for reading without following symlinks,
+// OpenRegular opens a destination file for reading without following symlinks,
 // after checking its folders. It fails if the file is not a regular file.
 func OpenRegular(root, rel string) (*os.File, error) {
 	if err := NewPathChecker(root).CheckParents(rel); err != nil {

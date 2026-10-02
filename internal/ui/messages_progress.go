@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 )
 
 // fileWordWidth pads "copied", "verified" and "deferred" so the paths after
@@ -20,9 +20,9 @@ const fileWordWidth = 9
 
 // RunHeader prints the block that opens a run or a scheduler: the command,
 // the profile, where data comes from and goes to, and the main settings.
-func RunHeader(p *Printer, command, profile, source, machineDir, options string) {
+func RunHeader(p *Printer, command, profile, source, target, options string) {
 	p.Plain(p.paint(styleBold, fmt.Sprintf("synctoceph %s (profile %s)", command, profile)))
-	for _, row := range [][2]string{{"Source", source}, {"Archive", machineDir}, {"Options", options}} {
+	for _, row := range [][2]string{{"From", source + "/<animal>"}, {"To", target}, {"Options", options}} {
 		p.Plain("  " + p.paint(styleDim, fmt.Sprintf("%-8s", row[0])) + "  " + row[1])
 	}
 	p.Blank()
@@ -42,11 +42,11 @@ func RunOptions(existing, verify string, settle time.Duration, dryRun bool) stri
 func PhaseLine(phase, detail string) string {
 	switch phase {
 	case "preflight":
-		return "Checking the archive, the source and rsync"
+		return "Checking the destination, the source and rsync"
 	case "scanning":
 		return "Scanning the source"
 	case "checking existing":
-		return "Checking files already in the archive (SHA-256)"
+		return "Checking files already on ceph (SHA-256)"
 	case "copying":
 		return "Copying " + detail
 	case "verifying":
@@ -57,11 +57,11 @@ func PhaseLine(phase, detail string) string {
 
 // PlanStep announces the copy list. It is printed when the list is ready
 // (after any SHA-256 check of existing files), together with PlanDetail.
-const PlanStep = "Comparing with the archive"
+const PlanStep = "Comparing with ceph"
 
 // ScanDetail summarises what the scan found. The size counts only files
 // ready to copy, not those still changing.
-func ScanDetail(s archive.RunSummary) string {
+func ScanDetail(s destination.RunSummary) string {
 	parts := []string{fmt.Sprintf("Found %s (%s)", Files(s.Scanned), Size(s.ScannedBytes))}
 	if n := len(s.Deferred); n > 0 {
 		parts = []string{"Found " + Files(s.Scanned),
@@ -72,13 +72,13 @@ func ScanDetail(s archive.RunSummary) string {
 		parts = append(parts, Count(s.Excluded)+" excluded")
 	}
 	if n := len(s.Skipped); n > 0 {
-		parts = append(parts, Count(n)+" skipped (symlinks or special files)")
+		parts = append(parts, Count(n)+" skipped (see the end of the report)")
 	}
 	return strings.Join(parts, "; ")
 }
 
 // PlanDetail summarises the copy list.
-func PlanDetail(s archive.RunSummary) string {
+func PlanDetail(s destination.RunSummary) string {
 	var parts []string
 	if s.Planned > 0 {
 		what := "to copy"
@@ -90,16 +90,16 @@ func PlanDetail(s archive.RunSummary) string {
 		parts = append(parts, "Nothing to copy")
 	}
 	if s.Replaced > 0 {
-		parts = append(parts, fmt.Sprintf("%s replace an older archive copy (kept in history)", Count(s.Replaced)))
+		parts = append(parts, fmt.Sprintf("%s replace an older copy on ceph (kept in history)", Count(s.Replaced)))
 	}
 	if s.UpToDate > 0 {
-		parts = append(parts, Count(s.UpToDate)+" already archived and verified")
+		parts = append(parts, Count(s.UpToDate)+" already copied and verified")
 	}
 	if s.Unverified > 0 {
-		parts = append(parts, Count(s.Unverified)+" in the archive but not verified yet")
+		parts = append(parts, Count(s.Unverified)+" on ceph but not verified yet")
 	}
 	if n := len(s.Differing); n > 0 {
-		parts = append(parts, fmt.Sprintf("%s %s from the archive (left as %s)", Count(n), verb(n, "differs", "differ"), verb(n, "it is", "they are")))
+		parts = append(parts, fmt.Sprintf("%s %s from the copy on ceph (left as %s)", Count(n), verb(n, "differs", "differ"), verb(n, "it is", "they are")))
 	}
 	return strings.Join(parts, "; ")
 }

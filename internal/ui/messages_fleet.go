@@ -6,21 +6,21 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 )
 
-// staleAfter is when a machine's last successful sync is flagged as old in
+// staleAfter is when a subfolder's last successful sync is flagged as old in
 // `fleet`.
 const staleAfter = 48 * time.Hour
 
 // HistoryUnavailable: history cannot be read.
 func HistoryUnavailable(err error) error {
 	return &Problem{What: "cannot read the history", Err: err,
-		Fix: "check the run ID with `synctoceph history list`, and that the archive is mounted"}
+		Fix: "check the run ID with `synctoceph history list`, and that ceph is mounted"}
 }
 
 // HistoryRuns lists the runs that kept previous versions.
-func HistoryRuns(p *Printer, root string, runs []archive.HistoryRun) {
+func HistoryRuns(p *Printer, root string, runs []destination.HistoryRun) {
 	if len(runs) == 0 {
 		p.Plain("No previous versions are kept (nothing has been replaced).")
 		return
@@ -34,7 +34,7 @@ func HistoryRuns(p *Printer, root string, runs []archive.HistoryRun) {
 }
 
 // HistoryFiles lists the previous versions kept by one run.
-func HistoryFiles(p *Printer, runID string, files []archive.HistoryFile) {
+func HistoryFiles(p *Printer, runID string, files []destination.HistoryFile) {
 	p.Plain("Previous versions kept by run " + runID + ":")
 	for _, f := range files {
 		p.Plain(fmt.Sprintf("  %s   %s, modified %s", f.Path, Size(f.Size), Time(f.MTime)))
@@ -45,7 +45,7 @@ func HistoryFiles(p *Printer, runID string, files []archive.HistoryFile) {
 func RestoreFailed(err error) error {
 	return &Problem{What: "restore did not complete", Err: err,
 		Why: "files listed above were restored; the rest were not",
-		Fix: "restore into an empty folder outside the archive; existing files are never overwritten"}
+		Fix: "restore into an empty folder outside the destination; existing files are never overwritten"}
 }
 
 // Restored confirms a restore.
@@ -53,22 +53,23 @@ func Restored(n int, dir string) string {
 	return fmt.Sprintf("Restored %s into %s (each checked with SHA-256).", Files(n), dir)
 }
 
-// FleetUnavailable: the archive root cannot be listed.
+// FleetUnavailable: the destination cannot be read.
 func FleetUnavailable(root string, err error) error {
-	return &Problem{What: "cannot read the archive " + root, Err: err,
-		Fix: "check that the lab share is mounted, or give the archive with --archive ROOT"}
+	return &Problem{What: "cannot read the destination " + root, Err: err,
+		Fix: "check that ceph is mounted, or give the folder with --destination DIR"}
 }
 
-// FleetReport prints one block per machine.
-func FleetReport(p *Printer, root string, machines []archive.MachineReport, now time.Time) {
-	if len(machines) == 0 {
-		p.Plain("No machine in " + root + " has run synctoceph yet.")
+// FleetReport prints one block per subfolder (usually one per acquisition
+// machine).
+func FleetReport(p *Printer, root string, subfolders []destination.SubfolderReport, now time.Time) {
+	if len(subfolders) == 0 {
+		p.Plain("No machine has copied into " + root + " with synctoceph yet.")
 		return
 	}
-	p.Plain(fmt.Sprintf("%s in %s:", plural(len(machines), "machine"), root))
-	for _, m := range machines {
+	p.Plain(fmt.Sprintf("%s in %s:", plural(len(subfolders), "subfolder"), root))
+	for _, m := range subfolders {
 		if m.Latest == nil {
-			p.Line(MarkError, m.Machine+": cannot read its run summary ("+m.Error+")")
+			p.Line(MarkError, m.Subfolder+": cannot read its run summary ("+m.Error+")")
 			continue
 		}
 		r := m.Latest
@@ -78,7 +79,7 @@ func FleetReport(p *Printer, root string, machines []archive.MachineReport, now 
 		}
 		marker := MarkOK
 		switch {
-		case r.Result == archive.ResultFailed || r.Result == archive.ResultInterrupted:
+		case r.Result == destination.ResultFailed || r.Result == destination.ResultInterrupted:
 			marker = MarkError
 		case r.LastSuccessAt == nil || now.Sub(*r.LastSuccessAt) > staleAfter:
 			marker = MarkWarning
@@ -86,7 +87,7 @@ func FleetReport(p *Printer, root string, machines []archive.MachineReport, now 
 			marker = MarkDeferred
 		}
 		text := fmt.Sprintf("%s: last run %s %s (host %s); last successful sync %s",
-			m.Machine, r.Result, Ago(r.FinishedAt, now), r.Hostname, success)
+			m.Subfolder, r.Result, Ago(r.FinishedAt, now), r.Hostname, success)
 		if r.DeferredCount > 0 {
 			text += fmt.Sprintf("\n%s deferred", Files(r.DeferredCount))
 			if oldest := r.OldestDeferral(); !oldest.IsZero() && now.Sub(oldest) > EscalateAfter {

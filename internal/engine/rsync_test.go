@@ -9,43 +9,40 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/config"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 )
 
 // SAFETY: invariant 1, 3, 5: the rsync options are fixed and never destructive.
+// Only the existing setting and the folders can change them; nothing else
+// from the config or the command line reaches rsync.
 func TestRsyncArgsAreFixedAndNeverDestructive(t *testing.T) {
 	forbidden := []string{"--delete", "--del", "--remove-source-files", "--inplace", "--append",
 		"--checksum", "-c", "--whole-file", "--no-backup", "--force"}
 	for _, existing := range []string{config.ExistingSkip, config.ExistingReplace} {
-		for _, verify := range []string{config.VerifyNew, config.VerifyAll} {
-			for _, dry := range []bool{false, true} {
-				s := config.Settings{Source: "/src", MachineDir: "/archive/m", Existing: existing, Verify: verify, DryRun: dry}
-				args := RsyncArgs(s, "/archive/m/.syncToCeph/history/run")
-				for _, a := range args {
-					for _, f := range forbidden {
-						if a == f || strings.HasPrefix(a, f+"=") || (strings.HasPrefix(f, "--del") && strings.HasPrefix(a, "--del")) {
-							t.Errorf("%s/%s: forbidden option %s", existing, verify, a)
-						}
-					}
-				}
-				joined := strings.Join(args, " ")
-				for _, must := range []string{"--files-from=- --from0", "--times", "--omit-dir-times",
-					"--partial-dir=.syncToCeph-partial", "--fsync", "--itemize-changes"} {
-					if !strings.Contains(joined, must) {
-						t.Errorf("%s: missing %s", existing, must)
-					}
-				}
-				if existing == config.ExistingReplace && !strings.Contains(joined, "--backup --backup-dir=/archive/m/.syncToCeph/history/run") {
-					t.Errorf("replace mode must back up into history: %s", joined)
-				}
-				if existing == config.ExistingSkip && (!strings.Contains(joined, "--ignore-existing") || strings.Contains(joined, "--ignore-times")) {
-					t.Errorf("skip mode must use --ignore-existing: %s", joined)
-				}
-				if tail := args[len(args)-3:]; tail[0] != "--" || tail[1] != "/src/" || tail[2] != "/archive/m/" {
-					t.Errorf("paths must follow --: %v", tail)
+		args := RsyncArgs(existing, "/ceph/.syncToCeph/behaviour/history/run/A1", "/src/A1", "/ceph/A1/behaviour")
+		for _, a := range args {
+			for _, f := range forbidden {
+				if a == f || strings.HasPrefix(a, f+"=") || (strings.HasPrefix(f, "--del") && strings.HasPrefix(a, "--del")) {
+					t.Errorf("%s: forbidden option %s", existing, a)
 				}
 			}
+		}
+		joined := strings.Join(args, " ")
+		for _, must := range []string{"--files-from=- --from0", "--times", "--omit-dir-times",
+			"--partial-dir=.syncToCeph-partial", "--fsync", "--itemize-changes"} {
+			if !strings.Contains(joined, must) {
+				t.Errorf("%s: missing %s", existing, must)
+			}
+		}
+		if existing == config.ExistingReplace && !strings.Contains(joined, "--backup --backup-dir=/ceph/.syncToCeph/behaviour/history/run/A1") {
+			t.Errorf("replace mode must back up into history: %s", joined)
+		}
+		if existing == config.ExistingSkip && (!strings.Contains(joined, "--ignore-existing") || strings.Contains(joined, "--ignore-times")) {
+			t.Errorf("skip mode must use --ignore-existing: %s", joined)
+		}
+		if tail := args[len(args)-3:]; tail[0] != "--" || tail[1] != "/src/A1/" || tail[2] != "/ceph/A1/behaviour/" {
+			t.Errorf("paths must follow --: %v", tail)
 		}
 	}
 }
@@ -94,11 +91,13 @@ func TestInterruptedCopyStaysOutOfPlaceAndResumes(t *testing.T) {
 	for i := range big {
 		big[i] = byte(i * 7)
 	}
-	src := filepath.Join(s.Source, "large.bin")
+	src := filepath.Join(s.Source, "A1", "large.bin")
+	os.MkdirAll(filepath.Dir(src), 0o755)
 	os.WriteFile(src, big, 0o644)
 	old := time.Now().Add(-time.Hour)
 	os.Chtimes(src, old, old)
-	write(t, filepath.Join(s.MachineDir, "large.bin"), "previous version")
+	to := filepath.Join(s.Destination, "A1", "behaviour")
+	write(t, filepath.Join(to, "large.bin"), "previous version")
 	s.Existing = config.ExistingReplace
 
 	rsyncPath, err := Preflight(s)
@@ -111,7 +110,7 @@ func TestInterruptedCopyStaysOutOfPlaceAndResumes(t *testing.T) {
 		// Wait until rsync has written some data to its temporary file.
 		deadline := time.Now().Add(10 * time.Second)
 		for time.Now().Before(deadline) {
-			matches, _ := filepath.Glob(filepath.Join(s.MachineDir, ".large.bin.*"))
+			matches, _ := filepath.Glob(filepath.Join(to, ".large.bin.*"))
 			for _, m := range matches {
 				if info, err := os.Stat(m); err == nil && info.Size() >= 64*1024 {
 					cancel()
@@ -122,20 +121,21 @@ func TestInterruptedCopyStaysOutOfPlaceAndResumes(t *testing.T) {
 		}
 		cancel()
 	}()
-	args := append([]string{"--bwlimit=256"}, RsyncArgs(s, archive.HistoryDir(s.MachineDir, "test"))...)
+	args := append([]string{"--bwlimit=256"}, RsyncArgs(s.Existing, destination.HistoryDir(s.MetaDir, "test"),
+		filepath.Join(s.Source, "A1"), to)...)
 	code, err := runRsync(ctx, rsyncJob{path: rsyncPath, args: args, files: []string{"large.bin"},
 		env: rsyncEnv(s.StateDir), grace: func() time.Duration { return KillGrace }})
 	if err != nil || code == 0 {
 		t.Fatalf("rsync should have been interrupted: code %d err %v", code, err)
 	}
-	if read(t, filepath.Join(s.MachineDir, "large.bin")) != "previous version" {
+	if read(t, filepath.Join(to, "large.bin")) != "previous version" {
 		t.Fatal("unfinished data appeared under the final name")
 	}
-	if info, err := os.Stat(filepath.Join(s.MachineDir, archive.PartialName, "large.bin")); err != nil || info.Size() == 0 {
-		t.Fatalf("partial file not kept in %s: %v", archive.PartialName, err)
+	if info, err := os.Stat(filepath.Join(to, destination.PartialName, "large.bin")); err != nil || info.Size() == 0 {
+		t.Fatalf("partial file not kept in %s: %v", destination.PartialName, err)
 	}
 	out := runSync(t, s)
-	if out.Summary.Result != archive.ResultOK || read(t, filepath.Join(s.MachineDir, "large.bin")) != string(big) {
+	if out.Summary.Result != destination.ResultOK || read(t, filepath.Join(to, "large.bin")) != string(big) {
 		t.Fatalf("the next run did not complete the copy: %s %v", out.Summary.Result, out.Summary.Errors)
 	}
 }
@@ -144,12 +144,12 @@ func TestInterruptedCopyStaysOutOfPlaceAndResumes(t *testing.T) {
 // copied files for the next run to verify.
 func TestInterruptedRunIsNeverVerified(t *testing.T) {
 	s := testSettings(t)
-	write(t, filepath.Join(s.Source, "a"), "a")
+	write(t, filepath.Join(s.Source, "A1", "a"), "a")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	out := Run(ctx, Options{Settings: s, RunID: archive.NewRunID(time.Now()),
-		PendingVerify: []string{"a"}})
-	if out.Summary.Result != archive.ResultInterrupted || out.Summary.Verified != 0 || out.Summary.ExitCode != 130 {
+	out := Run(ctx, Options{Settings: s, RunID: destination.NewRunID(time.Now()),
+		PendingVerify: []string{"A1/a"}})
+	if out.Summary.Result != destination.ResultInterrupted || out.Summary.Verified != 0 || out.Summary.ExitCode != 130 {
 		t.Fatalf("got %+v", out.Summary)
 	}
 	if len(out.PendingVerify) != 1 {
@@ -159,12 +159,12 @@ func TestInterruptedRunIsNeverVerified(t *testing.T) {
 
 func TestPendingFilesAreVerifiedByTheNextRun(t *testing.T) {
 	s := testSettings(t)
-	write(t, filepath.Join(s.Source, "a"), "a")
-	info, _ := os.Stat(filepath.Join(s.Source, "a"))
+	write(t, filepath.Join(s.Source, "A1", "a"), "a")
+	info, _ := os.Stat(filepath.Join(s.Source, "A1", "a"))
 	// As if a previous run copied the file and was stopped before verifying.
-	write(t, filepath.Join(s.MachineDir, "a"), "a")
-	os.Chtimes(filepath.Join(s.MachineDir, "a"), info.ModTime(), info.ModTime())
-	out := Run(context.Background(), Options{Settings: s, RunID: archive.NewRunID(time.Now()), PendingVerify: []string{"a"}})
+	write(t, dest(s, "A1/a"), "a")
+	os.Chtimes(dest(s, "A1/a"), info.ModTime(), info.ModTime())
+	out := Run(context.Background(), Options{Settings: s, RunID: destination.NewRunID(time.Now()), PendingVerify: []string{"A1/a"}})
 	if out.Summary.Verified != 1 || out.Summary.Unverified != 0 || len(out.PendingVerify) != 0 {
 		t.Fatalf("got %+v pending %v", out.Summary, out.PendingVerify)
 	}

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 )
 
 // SAFETY: invariant 10: a second holder is refused while the first holds the lock.
@@ -48,7 +48,7 @@ func TestStatusRoundTrip(t *testing.T) {
 		t.Fatalf("missing status: %+v %v", st, err)
 	}
 	for i := 0; i < recentRunsKept+5; i++ {
-		st.AddRun(archive.RunSummary{RunID: "r", Result: archive.ResultOK, FinishedAt: time.Now()})
+		st.AddRun(destination.RunSummary{RunID: "r", Result: destination.ResultOK, FinishedAt: time.Now()})
 	}
 	if err := WriteStatus(dir, &st); err != nil {
 		t.Fatal(err)

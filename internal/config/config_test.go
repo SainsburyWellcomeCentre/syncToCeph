@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/ui"
 )
 
 func TestParseDuration(t *testing.T) {
@@ -62,35 +64,47 @@ func writeConfig(t *testing.T, content string) string {
 // are errors.
 func TestUnknownKeysAreErrors(t *testing.T) {
 	for _, extra := range []string{`rsync_options = "--delete"`, `delete = true`, `sourse = "/typo"`} {
-		path := writeConfig(t, "source = \"/src\"\narchive = \"/archive\"\n"+extra+"\n")
+		path := writeConfig(t, "source = \"/src\"\ndestination = \"/ceph\"\nsubfolder = \"behaviour\"\n"+extra+"\n")
 		if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "unknown setting") {
 			t.Errorf("%s: got %v", extra, err)
 		}
 	}
 }
 
+// A config from before the animal-first layout is explained, not just refused.
+func TestOldKeysAreExplained(t *testing.T) {
+	path := writeConfig(t, "machine_name = \"scope-01\"\nsource = \"/src\"\narchive = \"/archive\"\n")
+	_, err := Load(path)
+	if err == nil || !strings.Contains(ui.Explain(err), "archive is now called destination") {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestResolveChecksValues(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	good := Config{MachineName: "scope-01", Source: "/src", Archive: "/archive", Existing: "skip",
+	good := Config{Subfolder: "behaviour", Source: "/src", Destination: "/ceph", Existing: "skip",
 		Verify: "new", SettleTime: "10m", Interval: "4h", Exclude: []string{"*.tmp"}}
 	s, err := good.Resolve("default")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.MachineDir != "/archive/scope-01" || s.SettleTime != 10*time.Minute || s.Interval != 4*time.Hour {
+	if s.MetaDir != "/ceph/.syncToCeph/behaviour" || s.DestRel("LUMS1/s1/a.bin") != "LUMS1/behaviour/s1/a.bin" || s.SettleTime != 10*time.Minute || s.Interval != 4*time.Hour {
 		t.Fatalf("got %+v", s)
 	}
 	bad := map[string]func(*Config){
 		"relative source": func(c *Config) { c.Source = "data" },
-		"no archive":      func(c *Config) { c.Archive = "" },
-		"machine slash":   func(c *Config) { c.MachineName = "a/b" },
-		"machine dots":    func(c *Config) { c.MachineName = ".." },
+		"no destination":  func(c *Config) { c.Destination = "" },
+		"no subfolder":    func(c *Config) { c.Subfolder = "" },
+		"subfolder slash": func(c *Config) { c.Subfolder = "a/b" },
+		"subfolder dots":  func(c *Config) { c.Subfolder = ".." },
+		"subfolder meta":  func(c *Config) { c.Subfolder = ".syncToCeph" },
 		"existing":        func(c *Config) { c.Existing = "overwrite" },
 		"verify":          func(c *Config) { c.Verify = "some" },
 		"settle":          func(c *Config) { c.SettleTime = "soon" },
 		"both schedules":  func(c *Config) { c.At = "02:00" },
 		"bad at":          func(c *Config) { c.Interval, c.At = "", "25:00" },
 		"bad exclude":     func(c *Config) { c.Exclude = []string{"[abc"} },
+		"slash exclude":   func(c *Config) { c.Exclude = []string{"/"} },
 		"relative mount":  func(c *Config) { c.RequireMount = "mnt/z" },
 	}
 	for name, change := range bad {
@@ -102,12 +116,31 @@ func TestResolveChecksValues(t *testing.T) {
 	}
 }
 
+// exclude_hidden adds ".*" to the patterns without changing the config's own list.
+func TestExcludeHidden(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	c := Config{Subfolder: "behaviour", Source: "/src", Destination: "/ceph", Existing: "skip",
+		Verify: "new", SettleTime: "0", Exclude: []string{"tmp/"}, ExcludeHidden: true}
+	s, err := c.Resolve("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(s.Exclude, " ") != "tmp/ .*" || len(c.Exclude) != 1 {
+		t.Fatalf("got %v (config %v)", s.Exclude, c.Exclude)
+	}
+	c.ExcludeHidden = false
+	if s, _ := c.Resolve("default"); len(s.Exclude) != 1 {
+		t.Fatalf("hidden files must be copied unless exclude_hidden is on: %v", s.Exclude)
+	}
+}
+
 func TestSaveAndLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sub", "p.toml")
 	c := Defaults()
-	c.MachineName, c.Source, c.Archive, c.At = "scope-01", `/data/with "quotes" and \back`, "/archive", "02:00"
+	c.Subfolder, c.Source, c.Destination, c.At = "behaviour", `/data/with "quotes" and \back`, "/ceph", "02:00"
 	c.Exclude = []string{"~$*", "Thumbs.db"}
+	c.ExcludeHidden = true
 	if err := c.Save("p", path, false); err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +148,7 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Source != c.Source || got.At != "02:00" || got.Interval != "" || len(got.Exclude) != 2 {
+	if got.Source != c.Source || got.At != "02:00" || got.Interval != "" || len(got.Exclude) != 2 || !got.ExcludeHidden {
 		t.Fatalf("round trip changed values: %+v", got)
 	}
 	if err := c.Save("p", path, false); err == nil {
@@ -142,7 +175,7 @@ func TestPathsFollowXDG(t *testing.T) {
 func TestVerboseIsOnUnlessTurnedOff(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	for content, want := range map[string]bool{"": true, "verbose = true\n": true, "verbose = false\n": false} {
-		cfg, err := Load(writeConfig(t, "source = \"/src\"\narchive = \"/archive\"\n"+content))
+		cfg, err := Load(writeConfig(t, "source = \"/src\"\ndestination = \"/ceph\"\nsubfolder = \"behaviour\"\n"+content))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -157,7 +190,7 @@ func TestVerboseIsOnUnlessTurnedOff(t *testing.T) {
 	// A config written by init keeps the choice.
 	path := filepath.Join(t.TempDir(), "p.toml")
 	c := Defaults()
-	c.Source, c.Archive, c.Verbose = "/src", "/archive", false
+	c.Subfolder, c.Source, c.Destination, c.Verbose = "behaviour", "/src", "/ceph", false
 	if err := c.Save("p", path, false); err != nil {
 		t.Fatal(err)
 	}

@@ -2,14 +2,15 @@
 
 ## synctoceph fleet
 
-Show the latest sync of every machine in the archive
+Show the latest sync of every machine copying to the destination
 
 ### Synopsis
 
-Reads the run summary that every machine writes to its folder in the archive
-and shows each machine's last run, last successful sync, deferred files and
-problems. Reads only. Uses the archive from this profile's config unless
---archive is given.
+Reads the run summaries that every machine writes to
+<destination>/.syncToCeph/<subfolder>/ and shows, per subfolder, the last run,
+the computer it ran on, the last successful sync, deferred files and
+problems. Reads only. Uses the destination from this profile's config unless
+--destination is given.
 
 ```
 synctoceph fleet [flags]
@@ -18,9 +19,9 @@ synctoceph fleet [flags]
 ### Options
 
 ```
-      --archive DIR   read the archive root DIR instead of the one in the config
-  -h, --help          help for fleet
-      --json          print machine-readable JSON
+      --destination DIR   read the destination DIR instead of the one in the config
+  -h, --help              help for fleet
+      --json              print machine-readable JSON
 ```
 
 ### Options inherited from parent commands
@@ -34,5 +35,5 @@ synctoceph fleet [flags]
 
 ### SEE ALSO
 
-* [synctoceph](synctoceph.md)	 - Copy acquisition data to the lab archive, verified with SHA-256
+* [synctoceph](synctoceph.md)	 - Copy acquisition data to ceph with rsync, verified with SHA-256
 

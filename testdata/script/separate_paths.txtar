@@ -1,17 +1,19 @@
-# SAFETY: invariant 7: source, archive and state must be separate, non-nested folders.
-mkdir src/archive
-config archive=$WORK/src/archive
+# SAFETY: invariant 7: source, destination and state must be separate, non-nested folders.
+mkdir src/ceph
+config destination=$WORK/src/ceph
 ! exec synctoceph run
-stderr 'the source .* and the archive .* overlap'
-! exists src/archive/scope-01
+stderr 'the source .* and the destination .* overlap'
+! exists src/ceph/.syncToCeph
+! exists src/ceph/LUMS0001
 
-mkdir archive
+mkdir ceph
 config
-env XDG_STATE_HOME=$WORK/archive/state
+env XDG_STATE_HOME=$WORK/ceph/state
 ! exec synctoceph run
-stderr 'the archive .* and the state folder .* overlap'
-! exists archive/scope-01
-! exists archive/state
+stderr 'the destination .* and the state folder .* overlap'
+! exists ceph/.syncToCeph
+! exists ceph/LUMS0001
+! exists ceph/state
 
--- src/a.txt --
+-- src/LUMS0001/a.txt --
 a

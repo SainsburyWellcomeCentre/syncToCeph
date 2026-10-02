@@ -1,5 +1,5 @@
 # The scheduler runs on the interval, counted from the end of each run.
-mkdir archive
+mkdir ceph
 config interval=1s
 exec synctoceph schedule --immediate &sched&
 waitlog 2 'Run finished: OK'
@@ -40,5 +40,5 @@ config
 ! exec synctoceph schedule
 stderr 'no schedule is set'
 
--- src/a.txt --
+-- src/LUMS0001/a.txt --
 a

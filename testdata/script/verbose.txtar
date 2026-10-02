@@ -1,59 +1,59 @@
 # By default a run lists every file it copies and verifies, under a header
 # that says which profile is copied from where to where.
-mkdir archive
+mkdir ceph
 config
 exec synctoceph run
 stdout '^synctoceph run \(profile default\)$'
-stdout '^  Source    .*/src$'
-stdout '^  Archive   .*/archive/scope-01$'
+stdout '^  From      .*/src/<animal>$'
+stdout '^  To        .*/ceph/<animal>/behaviour$'
 stdout '^==> Scanning the source$'
 stdout '^    Found 2 files \(11 B\)$'
-stdout '^==> Comparing with the archive$'
+stdout '^==> Comparing with ceph$'
 stdout '^    2 files to copy \(11 B\)$'
 stdout '^==> Copying 2 files \(11 B\)$'
-stdout '^    \[1/2\] copied    a.txt  6 B$'
-stdout '^    \[2/2\] verified  session 1/b.txt$'
+stdout '^    \[1/2\] copied    LUMS0001/a.txt  6 B$'
+stdout '^    \[2/2\] verified  LUMS0001/session 1/b.txt$'
 stdout '^RESULT    OK'
 
 # verbose = false in the config shows the steps but not every file.
-cp src/a.txt src/c.txt
+cp src/LUMS0001/a.txt src/LUMS0001/c.txt
 config verbose=false
 exec synctoceph run
 stdout '^==> Copying 1 file'
-! stdout 'copied    c.txt'
-! stdout 'verified  c.txt'
+! stdout 'copied    LUMS0001/c.txt'
+! stdout 'verified  LUMS0001/c.txt'
 stdout 'Copied and verified 1 file'
 
 # -v turns the list on again for one run; --verbose=false turns it off.
-cp src/a.txt src/d.txt
+cp src/LUMS0001/a.txt src/LUMS0001/d.txt
 exec synctoceph run -v
-stdout 'copied    d.txt'
+stdout 'copied    LUMS0001/d.txt'
 config verbose=true
-cp src/a.txt src/e.txt
+cp src/LUMS0001/a.txt src/LUMS0001/e.txt
 exec synctoceph run --verbose=false
-! stdout 'copied    e.txt'
+! stdout 'copied    LUMS0001/e.txt'
 stdout 'Copied and verified 1 file'
 
 # -q wins over the config: only the result is printed.
-cp src/a.txt src/f.txt
+cp src/LUMS0001/a.txt src/LUMS0001/f.txt
 exec synctoceph run -q
 ! stdout 'synctoceph run \(profile'
 ! stdout 'copied'
 stdout '^RESULT    OK'
 
 # A dry run says what it would copy, and lists all of it when verbose.
-cp src/a.txt src/g.txt
+cp src/LUMS0001/a.txt src/LUMS0001/g.txt
 exec synctoceph run --dry-run
 stdout 'dry run: nothing is written'
-stdout '^    1 file would be copied \(6 B\); 6 already archived and verified$'
-stdout '^            g.txt$'
+stdout '^    1 file would be copied \(6 B\); 6 already copied and verified$'
+stdout '^            LUMS0001/g.txt$'
 ! stdout '==> Copying'
 
 # init writes the verbose key with an explanation.
-exec synctoceph --profile fresh init --yes --source $WORK/src --archive $WORK/archive --schedule none
+exec synctoceph --profile fresh init --yes --source $WORK/src --destination $WORK/ceph --subfolder video --schedule none
 grep '^verbose       = true$' home/.config/synctoceph/fresh.toml
 
--- src/a.txt --
+-- src/LUMS0001/a.txt --
 alpha
--- src/session 1/b.txt --
+-- src/LUMS0001/session 1/b.txt --
 beta

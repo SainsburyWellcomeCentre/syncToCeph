@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/config"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/engine"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/state"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/ui"
@@ -22,7 +22,7 @@ import (
 const (
 	ModeRun      = "run"      // one run, then exit
 	ModeSchedule = "schedule" // runs on the schedule until stopped
-	ModeVerify   = "verify"   // re-verify archived files
+	ModeVerify   = "verify"   // re-verify copied files
 )
 
 // Controller owns one profile's state folder while synctoceph works on it.
@@ -39,7 +39,7 @@ type Controller struct {
 	// Verbose, if set, receives rsync's messages (warnings and errors).
 	Verbose func(line string)
 	// AfterRun, if set, is called with each finished run (schedule mode).
-	AfterRun func(archive.RunSummary)
+	AfterRun func(destination.RunSummary)
 	// Waiting, if set, is told when the scheduler starts waiting.
 	Waiting func(line string)
 
@@ -58,7 +58,7 @@ type Controller struct {
 // with an explanation if another synctoceph process holds the lock.
 func Open(s config.Settings, mode, version string) (*Controller, error) {
 	// SAFETY: invariant 7: check separation before the state folder is created, so it
-	// is never created inside the source or the archive.
+	// is never created inside the source or the destination.
 	if err := engine.CheckSeparate(s); err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func Open(s config.Settings, mode, version string) (*Controller, error) {
 		return nil, ui.StateProblem(s.StateDir, err)
 	}
 	lockPath := s.StateDir + "/" + state.LockName
-	// SAFETY: invariant 10 (one run per machine at a time).
+	// SAFETY: invariant 10 (one run per profile at a time).
 	lock, err := state.Acquire(lockPath)
 	if errors.Is(err, state.ErrLocked) {
 		st, _ := state.ReadStatus(s.StateDir, s.Profile)

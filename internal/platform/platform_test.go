@@ -30,6 +30,10 @@ func TestMountFor(t *testing.T) {
 	if !IsMountPoint(mounts, "/mnt/z") || IsMountPoint(mounts, "/mnt/z/lab") {
 		t.Error("IsMountPoint is wrong")
 	}
+	// An automount placeholder (x-systemd.automount) counts as a network mount.
+	if !IsNetwork(mounts[1]) {
+		t.Error("autofs must count as a network mount")
+	}
 }
 
 func TestDriveLetter(t *testing.T) {

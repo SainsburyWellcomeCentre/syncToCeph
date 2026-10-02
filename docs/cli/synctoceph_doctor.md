@@ -6,10 +6,11 @@ Check the setup and explain how to fix problems
 
 ### Synopsis
 
-Checks the configuration, rsync, the source folder, the archive mount (and its
-filesystem type), the archive folder, the state folder, the time zone and the
-service, and notes when another profile copies into the same archive
-folder. Each problem is printed with how to fix it. Nothing is changed.
+Checks the configuration, rsync, the source folder (and lists its animal
+folders), the ceph mount (and its filesystem type), the destination folder,
+the state folder, the time zone and the service, and notes when another
+profile copies into the same subfolder. Each problem is printed with how to
+fix it. Nothing is changed.
 --all-profiles checks every profile.
 
 Exit code 0 means no problems were found.
@@ -37,5 +38,5 @@ synctoceph doctor [flags]
 
 ### SEE ALSO
 
-* [synctoceph](synctoceph.md)	 - Copy acquisition data to the lab archive, verified with SHA-256
+* [synctoceph](synctoceph.md)	 - Copy acquisition data to ceph with rsync, verified with SHA-256
 

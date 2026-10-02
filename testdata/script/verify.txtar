@@ -1,45 +1,45 @@
 # Data copied before synctoceph was used is reported once as unverified.
-mkdir archive/scope-01
+mkdir ceph/LUMS0001/behaviour
 config
-cp src/a.txt archive/scope-01/a.txt
-age 2h src/a.txt archive/scope-01/a.txt
+cp src/LUMS0001/a.txt ceph/LUMS0001/behaviour/a.txt
+age 2h src/LUMS0001/a.txt ceph/LUMS0001/behaviour/a.txt
 exec synctoceph run
 stdout 'Nothing new to copy'
-stdout '1 file in the archive has the same size and time as the source, but synctoceph has not'
+stdout '1 file on ceph has the same size and time as the source, but synctoceph has not'
 stdout 'Check once with: synctoceph verify'
-! exec synctoceph check-archived src
-stdout 'UNVERIFIED    a.txt'
+! exec synctoceph check-copied src
+stdout 'UNVERIFIED    LUMS0001/a.txt'
 
 # The suggestion is shown once, not on every run.
 exec synctoceph run
 ! stdout 'Check once with'
 exec synctoceph status
-stdout '1 file in the archive not verified yet'
+stdout '1 file on ceph not verified yet'
 
 # verify re-reads both copies and records the match.
 exec synctoceph verify
 stdout 'Verified 1 file'
 stdout 'RESULT    OK: every file checked is verified.'
-exec synctoceph check-archived src
+exec synctoceph check-copied src
 stdout 'SAFE'
 exec synctoceph run
 ! stdout 'Check once with'
 
-# SAFETY: invariant 4: a damaged archive copy is found, never reported as verified.
-cp damaged.txt archive/scope-01/a.txt
-age 2h archive/scope-01/a.txt
+# SAFETY: invariant 4: a damaged copy on ceph is found, never reported as verified.
+cp damaged.txt ceph/LUMS0001/behaviour/a.txt
+age 2h ceph/LUMS0001/behaviour/a.txt
 ! exec synctoceph verify
-stdout 'ERROR     1 file in the archive differs from the source'
-stdout 'a.txt'
+stdout 'ERROR     1 file on ceph differs from the source'
+stdout 'LUMS0001/a.txt'
 
 # run --verify all finds it too, and replace mode repairs it (old copy kept).
 exec synctoceph run --verify all
-stdout '1 file already in the archive differs from the source and was NOT replaced'
+stdout '1 file already on ceph differs from the source and was NOT replaced'
 exec synctoceph run --verify all --existing replace
 stdout 'Copied and verified 1 file'
-cmp archive/scope-01/a.txt src/a.txt
+cmp ceph/LUMS0001/behaviour/a.txt src/LUMS0001/a.txt
 
--- src/a.txt --
+-- src/LUMS0001/a.txt --
 original content
 -- damaged.txt --
 DAMAGED content!

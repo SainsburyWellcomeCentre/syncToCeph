@@ -1,18 +1,34 @@
 # synctoceph
 
-Copies data from lab acquisition computers into the lab's archive, and checks
-every copy with SHA-256.
+Copies data from lab acquisition computers to the lab's ceph storage, with
+rsync, and checks every copy with SHA-256.
 
-Each computer writes into its own folder on an already-mounted archive share,
-`<archive>/<machine_name>/`. Copying is done by rsync, on demand or on a
-schedule. Runs on Linux and on Windows through WSL2.
+What it does:
 
-- **Nothing is ever deleted**, from the archive or from the source. Replaced
-  files are kept in a history folder.
-- **"Archived" means verified**: a file counts only once the SHA-256 of the
-  source and of the archive copy match.
-- **Files still being written are left for a later run**, with a clear message,
-  and never copied half-finished.
+- **Copies new data** from an acquisition computer to ceph (or any other
+  mounted network drive), using rsync. Files already on ceph are skipped.
+- **Runs once or in the background.** Run it by hand, or let it run on a
+  schedule (for example every 4 hours) so transfers happen automatically.
+- **Organises data by animal.** The source holds one folder per animal. Each
+  animal folder is copied into that animal's folder on ceph, inside a
+  subfolder named for this kind of data:
+
+  ```
+  /mnt/d/luminoseData/LUMS0014/...  ->  /mnt/ceph/<project>/LUMS0014/behaviour/...
+  ```
+
+  Other acquisition computers (for example an ephys rig or a histology
+  scope) fill other subfolders of the same animal folder
+  (`LUMS0014/ephys/`, `LUMS0014/histology/`).
+- **Checks every copy.** A file counts as copied only once the SHA-256 of the
+  source and of the copy on ceph match.
+- **Leaves files that are still being written** for a later run, with a clear
+  message.
+- **Only adds files.** synctoceph itself never deletes or moves anything, on
+  ceph or on the acquisition computer; a replaced file is kept in a history
+  folder. (Anyone with write access to ceph can still delete files there.)
+
+Runs on Linux and on Windows through WSL2.
 
 ## Install
 
@@ -22,25 +38,26 @@ cd syncToCeph
 ./install.sh
 ```
 
-Needs rsync 3.2.4 or newer. Go is downloaded for the build if needed.
+Needs rsync 3.2.4 or newer, and ceph mounted on the computer (see
+[Mounting ceph](docs/mounting.md)). Go is downloaded for the build if needed.
 
 ## Quickstart
 
 ```
-synctoceph init                # machine name, source, archive, schedule
+synctoceph init                # source, destination on ceph, subfolder, schedule
 synctoceph doctor              # check the setup
 synctoceph run --dry-run       # see what would be copied
 synctoceph run                 # copy and verify (each file is listed)
 synctoceph service install     # run automatically on the schedule
 ```
 
-Several folders to copy (another source, or another archive)? Give each its
-own profile: `synctoceph --profile NAME init`, then
+Several kinds of data on one computer (another source, or another
+subfolder)? Give each its own profile: `synctoceph --profile NAME init`, then
 `synctoceph run --all-profiles` and `synctoceph status --all-profiles`. See
 [Configuration](docs/configuration.md#several-jobs-on-one-computer-profiles).
 
 Before deleting data from an acquisition computer:
-`synctoceph check-archived PATH`.
+`synctoceph check-copied PATH`.
 
 ## Update an existing installation
 
@@ -52,8 +69,8 @@ cd syncToCeph            # the folder you ran ./install.sh from
 synctoceph version       # shows the version now installed
 ```
 
-Your configuration, logs, automatic runs and the archive are kept. A copy in
-progress is stopped gracefully and resumes on the next run.
+Your configuration, logs, automatic runs and the data on ceph are kept. A
+copy in progress is stopped gracefully and resumes on the next run.
 
 - **Lost the cloned folder?** Clone it again (see Install) and run
   `./install.sh`; your settings are kept.
@@ -61,7 +78,7 @@ progress is stopped gracefully and resumes on the next run.
   folder as it is.
 - **Remove it:** `./uninstall.sh` keeps your settings and logs;
   `./uninstall.sh --purge` deletes them too (it lists them and asks first).
-  Neither touches the archive or the source.
+  Neither touches ceph or the source.
 
 Details: [Installation](docs/installation.md#update-to-a-new-version).
 
@@ -70,7 +87,7 @@ Details: [Installation](docs/installation.md#update-to-a-new-version).
 **[All documentation](docs/README.md)**:
 [Installation](docs/installation.md) ·
 [Configuration](docs/configuration.md) ·
-[Mounting the share](docs/mounting.md) ·
+[Mounting ceph](docs/mounting.md) ·
 [Scheduling](docs/scheduling.md) ·
 [Operations](docs/operations.md) ·
 [Troubleshooting](docs/troubleshooting.md) ·

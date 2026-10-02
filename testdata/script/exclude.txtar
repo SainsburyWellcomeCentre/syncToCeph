@@ -1,26 +1,77 @@
 # Exclude patterns are matched by synctoceph, never passed to rsync.
-mkdir archive
+mkdir ceph
 # (a name with $ is created here, because file names in this archive are expanded)
-cp src/keep.txt 'src/sub/~$report.docx'
-config 'exclude=["Thumbs.db","~$*","*.tmp","scratch"]'
+cp src/LUMS0001/keep.txt 'src/LUMS0001/sub/~$report.docx'
+config 'exclude=["Thumbs.db","~$*","*.tmp","scratch","raw/","/LUMS0002"]'
 exec synctoceph run
-stdout 'Copied and verified 2 files'
-exists archive/scope-01/keep.txt
-exists archive/scope-01/sub/data.bin
-! exists archive/scope-01/Thumbs.db
-! exists 'archive/scope-01/sub/~$report.docx'
-! exists archive/scope-01/sub/x.tmp
-! exists archive/scope-01/scratch
+stdout 'Copied and verified 7 files'
+exists ceph/LUMS0001/behaviour/keep.txt
+exists ceph/LUMS0001/behaviour/sub/data.bin
+! exists ceph/LUMS0001/behaviour/Thumbs.db
+! exists 'ceph/LUMS0001/behaviour/sub/~$report.docx'
+! exists ceph/LUMS0001/behaviour/sub/x.tmp
+! exists ceph/LUMS0001/behaviour/scratch
+! exists ceph/scratch
 exec synctoceph logs -n 100
 ! stdout '--exclude'
 
--- src/keep.txt --
+# A trailing / leaves out folders only: the folder raw/ is excluded, a file named raw is not.
+! exists ceph/LUMS0001/behaviour/raw
+exists ceph/LUMS0001/behaviour/sub/raw
+
+# A pattern starting with / is a path from the source: here one whole animal.
+! exists ceph/LUMS0002
+exists ceph/LUMS0003/behaviour/c.txt
+
+# Without exclude_hidden, hidden files and folders are copied like any other,
+# and a hidden folder at the top of the source counts as an animal.
+exists ceph/LUMS0001/behaviour/.hidden-settings.json
+exists ceph/LUMS0001/behaviour/.git/config
+exists ceph/.Trash-1000/behaviour/old.txt
+
+# With exclude_hidden = true they are left out (and counted as excluded).
+mkdir ceph2
+config destination=$WORK/ceph2 exclude_hidden=true 'exclude=["Thumbs.db","~$*","*.tmp","scratch","raw/","/LUMS0002"]'
+exec synctoceph run
+stdout 'Copied and verified 4 files'
+stdout '; 10 excluded'
+exists ceph2/LUMS0001/behaviour/keep.txt
+! exists ceph2/LUMS0001/behaviour/.hidden-settings.json
+! exists ceph2/LUMS0001/behaviour/.git
+! exists ceph2/.Trash-1000
+
+# check-copied lists excluded entries, so a folder holding them is never "safe".
+! exec synctoceph check-copied src/LUMS0001
+stdout 'EXCLUDED      LUMS0001/.git'
+
+# The reserved name .syncToCeph is always skipped, whatever the settings.
+stdout 'SKIPPED       LUMS0001/.syncToCeph'
+
+-- src/LUMS0001/keep.txt --
 keep
--- src/Thumbs.db --
+-- src/LUMS0001/Thumbs.db --
 x
--- src/sub/data.bin --
+-- src/LUMS0001/sub/data.bin --
 data
--- src/sub/x.tmp --
+-- src/LUMS0001/sub/x.tmp --
 tmp
--- src/scratch/big.raw --
+-- src/LUMS0001/sub/raw --
+a file named raw
+-- src/LUMS0001/raw/frame.bin --
+a folder named raw
+-- src/LUMS0001/scratch/big.raw --
 raw
+-- src/LUMS0001/.hidden-settings.json --
+{}
+-- src/LUMS0001/.git/config --
+git
+-- src/LUMS0001/.syncToCeph/x --
+reserved
+-- src/LUMS0002/b.txt --
+b
+-- src/LUMS0003/c.txt --
+c
+-- src/scratch/other.raw --
+raw
+-- src/.Trash-1000/old.txt --
+trash

@@ -31,5 +31,5 @@ synctoceph completion bash|zsh [flags]
 
 ### SEE ALSO
 
-* [synctoceph](synctoceph.md)	 - Copy acquisition data to the lab archive, verified with SHA-256
+* [synctoceph](synctoceph.md)	 - Copy acquisition data to ceph with rsync, verified with SHA-256
 

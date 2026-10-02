@@ -1,10 +1,9 @@
 # SAFETY: invariant 11: stop asks rsync to stop with SIGINT; the run is INTERRUPTED,
 # exits with 130, and is never reported as verified.
 # A stand-in rsync (bin/rsync) waits until it is interrupted.
-mkdir archive
+mkdir ceph
 chmod 755 bin/rsync
 config
-cp src/a.txt archive-a-before.txt
 env ORIGPATH=$PATH
 env PATH=$WORK/bin:$PATH FAKE_RSYNC_DIR=$WORK
 ! exec synctoceph run &run&
@@ -46,7 +45,7 @@ env PATH=$ORIGPATH
 exec synctoceph run
 stdout 'Copied and verified 1 file'
 
--- src/a.txt --
+-- src/LUMS0001/a.txt --
 a
 -- bin/rsync --
 #!/bin/sh

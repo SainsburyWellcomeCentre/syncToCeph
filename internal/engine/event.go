@@ -4,7 +4,7 @@
 // started the run decides how to show them (see internal/cli/runview.go).
 package engine
 
-import "github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
+import "github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 
 // Kinds of Event.
 const (
@@ -25,5 +25,5 @@ type Event struct {
 	// example the 3rd of 40 files to verify. Both are 0 when not known.
 	Done, Total int
 	// Summary is the run summary so far (scanned and planned events only).
-	Summary archive.RunSummary
+	Summary destination.RunSummary
 }

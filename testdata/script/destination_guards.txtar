@@ -1,0 +1,27 @@
+# SAFETY: invariant 6: a missing destination folder is an error and is never created.
+config
+! exec synctoceph run
+stdout 'the destination folder .* does not exist'
+stdout 'synctoceph never creates the destination folder'
+! exists ceph
+
+# SAFETY: invariant 6: with require_mount, the destination is used only if it is mounted.
+mkdir notamount/project
+config destination=$WORK/notamount/project require_mount=$WORK/notamount
+! exec synctoceph run
+stdout 'is not mounted'
+stdout 'What to do: mount the share'
+! exists notamount/project/LUMS0001
+! exists notamount/project/.syncToCeph
+
+# require_mount must contain the destination.
+mkdir ceph
+config require_mount=$WORK/notamount
+! exec synctoceph run
+stdout 'does not contain the destination'
+
+# The exit code for FAILED is 1.
+exec sh -c 'synctoceph run >/dev/null; test $? -eq 1'
+
+-- src/LUMS0001/a.txt --
+a

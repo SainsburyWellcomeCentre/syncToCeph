@@ -1,8 +1,9 @@
-// This file saves run summaries into the machine folder
-// (.syncToCeph/runs/<run-id>.json and runs/latest.json) and reads them back.
-// They let anyone with access to the archive see how each machine's syncs
-// are going, without logging in to that machine (`synctoceph fleet`).
-package archive
+// This file saves run summaries into a subfolder's records folder
+// (<destination>/.syncToCeph/<subfolder>/runs/<run-id>.json and
+// runs/latest.json) and reads them back. They let anyone with access to the
+// destination see how each acquisition machine's syncs are going, without
+// logging in to that machine (`synctoceph fleet`).
+package destination
 
 import (
 	"encoding/json"
@@ -18,8 +19,8 @@ const latestName = "latest.json"
 
 // WriteRunSummary saves a run summary as runs/<run-id>.json and as
 // runs/latest.json. Long file lists are shortened (see Capped).
-func WriteRunSummary(machineDir string, s RunSummary) error {
-	dir := RunsDir(machineDir)
+func WriteRunSummary(metaDir string, s RunSummary) error {
+	dir := RunsDir(metaDir)
 	if err := NoSymlinks(dir); err != nil {
 		return err
 	}
@@ -34,22 +35,22 @@ func WriteRunSummary(machineDir string, s RunSummary) error {
 	return platform.WriteFileAtomic(filepath.Join(dir, latestName), data, 0o644)
 }
 
-// ReadLatest reads runs/latest.json of a machine folder.
-func ReadLatest(machineDir string) (RunSummary, error) {
+// ReadLatest reads runs/latest.json of a records folder.
+func ReadLatest(metaDir string) (RunSummary, error) {
 	var s RunSummary
-	f, err := OpenRegular(RunsDir(machineDir), latestName)
+	f, err := OpenRegular(RunsDir(metaDir), latestName)
 	if err != nil {
 		return s, err
 	}
 	defer f.Close()
 	if err := json.NewDecoder(f).Decode(&s); err != nil {
-		return s, fmt.Errorf("reading %s: %w", filepath.Join(RunsDir(machineDir), latestName), err)
+		return s, fmt.Errorf("reading %s: %w", filepath.Join(RunsDir(metaDir), latestName), err)
 	}
 	return s, nil
 }
 
-// runsDirExists reports whether a machine folder has any run summaries.
-func runsDirExists(machineDir string) bool {
-	info, err := os.Lstat(RunsDir(machineDir))
+// runsDirExists reports whether a records folder has any run summaries.
+func runsDirExists(metaDir string) bool {
+	info, err := os.Lstat(RunsDir(metaDir))
 	return err == nil && info.IsDir()
 }

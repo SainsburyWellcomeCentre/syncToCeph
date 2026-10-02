@@ -7,8 +7,8 @@ package cli
 import (
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/config"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/engine"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/scheduler"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/ui"
@@ -26,7 +26,7 @@ type runView struct {
 
 // header prints which profile is copied from where to where.
 func (v *runView) header(command string, s config.Settings) {
-	ui.RunHeader(v.p, command, s.Profile, s.Source, s.MachineDir,
+	ui.RunHeader(v.p, command, s.Profile, s.Source, s.Target(),
 		ui.RunOptions(s.Existing, s.Verify, s.SettleTime, s.DryRun))
 }
 
@@ -75,7 +75,7 @@ func (v *runView) event(e engine.Event) {
 
 // report prints the result of a finished run, and gets ready for the next
 // one (the scheduler runs many).
-func (v *runView) report(sum archive.RunSummary, settle time.Duration) {
+func (v *runView) report(sum destination.RunSummary, settle time.Duration) {
 	v.last = ""
 	v.p.Blank()
 	ui.RunReport(v.p, sum, settle, v.everyFile)

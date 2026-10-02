@@ -18,21 +18,24 @@ const configTemplate = `# synctoceph configuration, profile %q.
 # Edit this file freely; unknown keys are errors. Check it with: synctoceph doctor
 # Full reference: docs/configuration.md
 
-# Name of this machine. Its data goes to <archive>/<machine_name>/.
-machine_name  = %s
-
-# Folder to copy from. It is only ever read, never changed.
+# Folder to copy from, holding one folder per animal. It is only ever read,
+# never changed. Files directly in it (outside an animal folder) are not copied.
 source        = %s
 
-# Root folder of the lab archive. It must already exist; it is never created.
-archive       = %s
+# Folder on ceph (or another mounted network drive) that holds the animal
+# folders. It must already exist; it is never created.
+destination   = %s
 
-# Mount point that must be mounted and contain the archive ("" = no check).
+# This machine's folder inside every animal folder, e.g. "behaviour" or
+# "ephys": <source>/<animal>/... goes to <destination>/<animal>/<subfolder>/...
+subfolder     = %s
+
+# Mount point that must be mounted and contain the destination ("" = no check).
 require_mount = %s
 
-# Files already in the archive that differ from the source:
+# Files already on ceph that differ from the source:
 # "skip" leaves them alone; "replace" copies over them and keeps the old
-# version under <machine folder>/.syncToCeph/history/.
+# version under <destination>/.syncToCeph/<subfolder>/history/.
 existing      = %s
 
 # Which files to check with SHA-256 after copying:
@@ -42,14 +45,20 @@ verify        = %s
 # Files modified more recently than this are left for a later run.
 settle_time   = %s
 
-# File or folder names to leave out (simple patterns: * ? [abc]).
+# File or folder names to leave out (simple patterns: * ? [abc]). A name
+# matches anywhere; a pattern with / matches a path from the source folder,
+# e.g. "LUMS0014/scratch"; a trailing / matches folders only, e.g. "tmp/".
 exclude       = %s
+
+# true = leave out every file and folder whose name starts with "."
+# (such as .git, .DS_Store or .Trash-1000), as if ".*" were in exclude.
+exclude_hidden = %t
 
 # Schedule for the service: set interval OR at, not both.
 %s
 %s
 
-# true = only show what would be copied; never write to the archive.
+# true = only show what would be copied; never write to the destination.
 dry_run       = %t
 
 # true = list every file as it is copied and verified; false = show only
@@ -70,9 +79,9 @@ func (c Config) Render(profile string) string {
 	for i, pattern := range c.Exclude {
 		quoted[i] = quote(pattern)
 	}
-	return fmt.Sprintf(configTemplate, profile, quote(c.MachineName), quote(c.Source),
-		quote(c.Archive), quote(c.RequireMount), quote(c.Existing), quote(c.Verify),
-		quote(c.SettleTime), "["+strings.Join(quoted, ", ")+"]", interval, at, c.DryRun, c.Verbose)
+	return fmt.Sprintf(configTemplate, profile, quote(c.Source), quote(c.Destination),
+		quote(c.Subfolder), quote(c.RequireMount), quote(c.Existing), quote(c.Verify),
+		quote(c.SettleTime), "["+strings.Join(quoted, ", ")+"]", c.ExcludeHidden, interval, at, c.DryRun, c.Verbose)
 }
 
 // quote writes s as a TOML basic string, escaping quotes, backslashes and

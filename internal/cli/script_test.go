@@ -83,14 +83,15 @@ func setupScript(env *testscript.Env) error {
 	return os.MkdirAll(home, 0o700)
 }
 
-// cmdConfig writes the config of a profile. Defaults: machine_name
-// "scope-01", source $WORK/src, archive $WORK/archive, settle_time "0s".
+// cmdConfig writes the config of a profile. Defaults: source $WORK/src,
+// destination $WORK/ceph, subfolder "behaviour", settle_time "0s". So
+// src/LUMS0001/a.txt is copied to ceph/LUMS0001/behaviour/a.txt.
 // The pseudo-key profile=NAME chooses the profile.
 func cmdConfig(ts *testscript.TestScript, neg bool, args []string) {
 	work := ts.Getenv("WORK")
-	values := map[string]string{"machine_name": `"scope-01"`, "source": fmt.Sprintf("%q", work+"/src"),
-		"archive": fmt.Sprintf("%q", work+"/archive"), "settle_time": `"0s"`}
-	order := []string{"machine_name", "source", "archive", "settle_time"}
+	values := map[string]string{"source": fmt.Sprintf("%q", work+"/src"),
+		"destination": fmt.Sprintf("%q", work+"/ceph"), "subfolder": `"behaviour"`, "settle_time": `"0s"`}
+	order := []string{"source", "destination", "subfolder", "settle_time"}
 	profile := "default"
 	for _, arg := range args {
 		key, value, ok := strings.Cut(arg, "=")

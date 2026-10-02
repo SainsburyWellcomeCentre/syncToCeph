@@ -1,11 +1,12 @@
-// This file answers questions about files that are already archived:
+// This file answers questions about files that are already on the
+// destination:
 //
-//   - CheckArchived (for `synctoceph check-archived`) reports, from the
+//   - CheckCopied (for `synctoceph check-copied`) reports, from the
 //     verified-file record, whether each source file under a path is safely
-//     in the archive, so people know what they may delete from the
-//     acquisition PC. It reads only metadata and is fast.
-//   - VerifyTree (for `synctoceph verify`) re-reads source and archive copies
-//     with SHA-256 and updates the verified-file record.
+//     on ceph, so people know what they may delete from the acquisition PC.
+//     It reads only metadata and is fast.
+//   - VerifyTree (for `synctoceph verify`) re-reads source files and their
+//     copies with SHA-256 and updates the verified-file record.
 package engine
 
 import (
@@ -15,8 +16,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/config"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/platform"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/state"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/ui"
@@ -42,26 +43,26 @@ func SourceRelative(s config.Settings, arg string) (string, error) {
 	return rel, nil
 }
 
-// CheckArchived reports the archive state of every source file under sub.
-func CheckArchived(ctx context.Context, s config.Settings, sub string) ([]archive.FileStatus, error) {
+// CheckCopied reports the destination state of every source file under sub.
+func CheckCopied(ctx context.Context, s config.Settings, sub string) ([]destination.FileStatus, error) {
 	scan, err := ScanSource(ctx, s.Source, sub, s.Exclude, NeverDefer, time.Now())
 	if err != nil {
 		return nil, ui.SourceUnreadable(s.Source, err)
 	}
-	manifest, err := archive.LoadManifest(s.MachineDir)
+	manifest, err := destination.LoadManifest(s.MetaDir)
 	if err != nil {
-		return nil, ui.ManifestUnreadable(archive.ManifestPath(s.MachineDir), err)
+		return nil, ui.ManifestUnreadable(destination.ManifestPath(s.MetaDir), err)
 	}
-	checker := archive.NewPathChecker(s.MachineDir)
-	var out []archive.FileStatus
+	checker := destination.NewPathChecker(s.Destination)
+	var out []destination.FileStatus
 	for _, f := range scan.Files {
-		out = append(out, archive.FileStatus{Path: f.Path, Status: archiveState(s, checker, manifest, f)})
+		out = append(out, destination.FileStatus{Path: f.Path, Status: copyState(s, checker, manifest, f)})
 	}
 	for _, p := range scan.ExcludedPaths {
-		out = append(out, archive.FileStatus{Path: p, Status: archive.StatusExcluded})
+		out = append(out, destination.FileStatus{Path: p, Status: destination.StatusExcluded})
 	}
 	for _, sk := range scan.Skipped {
-		out = append(out, archive.FileStatus{Path: sk.Path, Status: archive.StatusSkipped})
+		out = append(out, destination.FileStatus{Path: sk.Path, Status: destination.StatusSkipped})
 	}
 	for _, e := range scan.Errors {
 		return out, errors.New(e)
@@ -69,46 +70,47 @@ func CheckArchived(ctx context.Context, s config.Settings, sub string) ([]archiv
 	return out, nil
 }
 
-// archiveState decides the state of one file from metadata only.
-func archiveState(s config.Settings, checker *archive.PathChecker, m archive.Manifest, f SourceFile) string {
-	if checker.CheckParents(f.Path) != nil {
-		return archive.StatusNotArchived
+// copyState decides the state of one file from metadata only.
+func copyState(s config.Settings, checker *destination.PathChecker, m destination.Manifest, f SourceFile) string {
+	target := s.DestRel(f.Path)
+	if checker.CheckParents(target) != nil {
+		return destination.StatusNotCopied
 	}
-	info, err := os.Lstat(filepath.Join(s.MachineDir, f.Path))
+	info, err := os.Lstat(filepath.Join(s.Destination, target))
 	if err != nil || !info.Mode().IsRegular() {
-		return archive.StatusNotArchived
+		return destination.StatusNotCopied
 	}
-	if info.Size() != f.Size || !archive.SameTime(info.ModTime(), f.MTime) {
-		return archive.StatusDiffers
+	if info.Size() != f.Size || !destination.SameTime(info.ModTime(), f.MTime) {
+		return destination.StatusDiffers
 	}
 	if e, ok := m.Entries[f.Path]; ok && e.Matches(f.Size, f.MTime) {
-		return archive.StatusVerified
+		return destination.StatusVerified
 	}
-	return archive.StatusUnverified
+	return destination.StatusUnverified
 }
 
-// VerifyTree re-hashes every source file under sub that has an archive copy
+// VerifyTree re-hashes every source file under sub that has a destination copy
 // and records the ones that match. The caller holds the state lock.
-func VerifyTree(ctx context.Context, s config.Settings, sub, runID string, log *state.Logger, progress func(done, total int)) (archive.VerifyReport, error) {
-	var rep archive.VerifyReport
+func VerifyTree(ctx context.Context, s config.Settings, sub, runID string, log *state.Logger, progress func(done, total int)) (destination.VerifyReport, error) {
+	var rep destination.VerifyReport
 	if _, err := Preflight(s); err != nil {
 		return rep, err
 	}
-	lock, err := state.Acquire(archive.LockPath(s.MachineDir))
+	lock, err := state.Acquire(destination.LockPath(s.MetaDir))
 	switch {
 	case errors.Is(err, state.ErrLocked):
-		return rep, ui.ArchiveBusy(s.MachineDir)
+		return rep, ui.DestinationBusy(s.Subfolder)
 	case err == nil:
 		defer lock.Release()
 	case !errors.Is(err, state.ErrLockUnsupported) && !errors.Is(err, os.ErrNotExist):
-		return rep, ui.MetaDirFailed(s.MachineDir, err)
+		return rep, ui.MetaDirFailed(s.MetaDir, err)
 	}
 	scan, err := ScanSource(ctx, s.Source, sub, s.Exclude, NeverDefer, time.Now())
 	if err != nil {
 		return rep, ui.SourceUnreadable(s.Source, err)
 	}
 	rep.Errors = append(rep.Errors, scan.Errors...)
-	var writer *archive.ManifestWriter
+	var writer *destination.ManifestWriter
 	for i, f := range scan.Files {
 		if ctx.Err() != nil {
 			break
@@ -116,16 +118,16 @@ func VerifyTree(ctx context.Context, s config.Settings, sub, runID string, log *
 		if progress != nil {
 			progress(i+1, len(scan.Files))
 		}
-		c := VerifyFile(ctx, s.Source, s.MachineDir, f)
+		c := VerifyFile(ctx, s, f)
 		switch {
 		case c.SHA256 != "":
 			if writer == nil {
-				if writer, err = archive.OpenManifestWriter(s.MachineDir); err != nil {
-					return rep, ui.ManifestUnwritable(archive.ManifestPath(s.MachineDir), err)
+				if writer, err = destination.OpenManifestWriter(s.MetaDir); err != nil {
+					return rep, ui.ManifestUnwritable(destination.ManifestPath(s.MetaDir), err)
 				}
 			}
-			// SAFETY: invariant 4 ("archived" means verified): recorded only after a match.
-			err = writer.Append(archive.Entry{Path: f.Path, Size: f.Size, MTime: f.MTime.UTC(),
+			// SAFETY: invariant 4 ("copied" means verified): recorded only after a match.
+			err = writer.Append(destination.Entry{Path: f.Path, Size: f.Size, MTime: f.MTime.UTC(),
 				SHA256: c.SHA256, VerifiedAt: time.Now().UTC(), RunID: runID})
 			if err != nil {
 				rep.Errors = append(rep.Errors, err.Error())
@@ -137,7 +139,7 @@ func VerifyTree(ctx context.Context, s config.Settings, sub, runID string, log *
 		case c.Defer != "":
 			rep.Changed = append(rep.Changed, f.Path)
 		case errors.Is(c.Err, os.ErrNotExist) || errors.Is(c.Err, errMissing):
-			rep.NotArchived = append(rep.NotArchived, f.Path)
+			rep.NotCopied = append(rep.NotCopied, f.Path)
 		case errors.Is(c.Err, errMismatch):
 			rep.Checked++
 			rep.Differing = append(rep.Differing, f.Path)

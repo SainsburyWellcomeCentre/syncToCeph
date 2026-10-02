@@ -47,12 +47,14 @@ func IsWindowsDrive(m Mount) bool {
 	return m.FSType == "drvfs" || (m.FSType == "9p" && strings.Contains(m.Options, "aname=drvfs"))
 }
 
-// networkTypes are filesystem types that live on another computer.
+// networkTypes are filesystem types that live on another computer. autofs
+// is the placeholder systemd puts at a mount point with x-systemd.automount
+// (as recommended for ceph in docs/mounting.md) until the share is first used.
 var networkTypes = map[string]bool{
 	"cifs": true, "smb3": true, "smbfs": true, "nfs": true, "nfs4": true,
 	"ceph": true, "fuse.ceph-fuse": true, "fuse.sshfs": true, "9p": true,
 	"afs": true, "glusterfs": true, "fuse.glusterfs": true, "lustre": true,
-	"gpfs": true, "beegfs": true,
+	"gpfs": true, "beegfs": true, "autofs": true,
 }
 
 // IsNetwork reports whether m is a network share or a Windows drive rather
@@ -71,7 +73,7 @@ func Within(path, dir string) bool {
 }
 
 // DriveLetter returns the Windows drive letter for a WSL path such as
-// /mnt/z or /mnt/z/lab-archive, or "" if the path is not of that form.
+// /mnt/z or /mnt/z/lab-data, or "" if the path is not of that form.
 func DriveLetter(path string) string {
 	parts := strings.Split(strings.TrimPrefix(filepath.Clean(path), "/"), "/")
 	if len(parts) >= 2 && parts[0] == "mnt" && len(parts[1]) == 1 {

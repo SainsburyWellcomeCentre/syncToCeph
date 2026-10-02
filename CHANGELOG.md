@@ -5,21 +5,79 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+### Added: leaving out hidden files and folders-only patterns (2026-10-02)
+
+- `exclude_hidden` setting: `true` leaves out every file and folder whose
+  name starts with `.` (such as `.git`, `.DS_Store`, `.Trash-1000`), as if
+  `".*"` were in `exclude`. It is `false` when missing; `init` writes `true`.
+- `exclude` patterns ending in `/` match folders only (`"scratch/"`).
+- `docs/configuration.md` has a section "Leaving files and folders out" with
+  examples, including excluding a whole animal (`"/LUMS0099"`).
+
+### Changed: animal-first layout and new names (2026-10-02)
+
+This changes the config file, the folders on the destination and the
+`--json` output. Existing config files are refused with an explanation; run
+`synctoceph init --force` on each acquisition computer.
+
+- **Data is organised by animal.** The source holds one folder per animal,
+  and each animal folder is copied into this machine's subfolder of the
+  animal's folder on the destination:
+  `<source>/<animal>/...` goes to `<destination>/<animal>/<subfolder>/...`.
+  Several acquisition machines (for example behaviour, ephys and histology)
+  can now fill the same animal folder, each in its own subfolder. Before,
+  each machine wrote to its own top-level folder,
+  `<archive>/<machine_name>/`, which kept one animal's data apart.
+- Files directly in the source, outside any animal folder, are no longer
+  copied; each run lists them as skipped ("not inside an animal folder").
+- rsync runs once per animal folder that has something to copy.
+- synctoceph's records moved from `<archive>/<machine_name>/.syncToCeph/` to
+  `<destination>/.syncToCeph/<subfolder>/` (the lock file there is now
+  called `lock`). History keeps paths as in the source, animal folder first.
+- "Archive" is no longer used: the config key `archive` is now
+  `destination`; `machine_name` is replaced by `subfolder`, which is
+  required (no default); `check-archived` is now `check-copied`, and its
+  `not-archived` status is `not-copied`; `fleet --archive` is now
+  `fleet --destination`. Messages and documentation say "ceph" or
+  "destination".
+- `--json` outputs have `schema_version` 2, and so does the run summary:
+  `machine_name` became `subfolder`, `archive` became `destination`;
+  `verify --json` has `not_copied` instead of `not_archived`;
+  `fleet --json` lists `subfolders` (each with `subfolder`) under
+  `destination`. `status.json` has schema version 2.
+- `init` asks for the source, the destination, the subfolder, the mount and
+  the schedule (flags `--source`, `--destination`, `--subfolder`), and lists
+  the animal folders it found in the source; `doctor` lists them too.
+- `doctor` prints ceph mount commands (cifs, credentials file, `/etc/fstab`)
+  when the mount is missing. An `x-systemd.automount` placeholder (`autofs`)
+  counts as a network mount, so `init` suggests `require_mount` for it.
+- The README describes what the tool does instead of overstating its
+  guarantees: synctoceph itself never deletes data, but people with write
+  access to ceph can.
+- `docs/mounting.md` is rewritten for ceph: installing `cifs-utils`, creating
+  the mount point, mounting by hand, the credentials file, and every option
+  of the `/etc/fstab` line.
+
+Upgrading: data already copied under `<archive>/<machine_name>/` is left
+where it is; synctoceph does not move it. After the change, runs fill the
+new layout, copying files again where they are not yet in
+`<destination>/<animal>/<subfolder>/`. Move or remove the old folders by hand
+once you have checked the new copies (`synctoceph check-copied`).
+
 ### Added
 
 - `verbose` config setting, on by default: `run` and `schedule` list every
   file as it is copied (`[n/total] copied PATH SIZE`), verified and deferred.
   `--verbose=false` hides the list for one run; `-v` shows it.
 - Clearer terminal output while a run works: a header with the profile,
-  source and machine folder; one `==>` line per step with a summary after the
+  source and destination; one `==>` line per step with a summary after the
   scan and the plan; the RESULT verdict coloured by outcome.
 - `--all-profiles` for `run`, `status`, `doctor` and `service install`, to
   work with several config files (profiles) at once. `run --all-profiles`
   ends with a summary and exits with the worst result.
   `service uninstall --all-profiles` is the new name for `--all` (which
   still works).
-- `init` and `doctor` note when two profiles copy into the same archive
-  folder.
+- `init` and `doctor` note when two profiles copy into the same subfolder.
 - `docs/README.md`, an index of the documentation; every page now links to
   the README, the index, and the previous and next page.
 - README section "Update an existing installation".
@@ -27,12 +85,11 @@ All notable changes to this project are listed here. The format follows
 - Rewrite in Go as a single program, `synctoceph`, installed with
   `install.sh`, updated with `update.sh` and removed with `uninstall.sh`.
 - Commands: `init`, `doctor`, `run`, `schedule`, `status`, `logs`, `stop`,
-  `verify`, `check-archived`, `history list`, `history restore`, `fleet`,
+  `verify`, `check-copied`, `history list`, `history restore`, `fleet`,
   `service install|uninstall|status`, `completion`, `version`.
-- One folder per machine in the archive (`<archive>/<machine_name>/`), with
-  per-machine metadata in `.syncToCeph/`: verified-file record, history of
-  replaced files, and run summaries read by `fleet`.
-- Files already in the archive are skipped by default; `--existing replace`
+- Records on the destination in `.syncToCeph/<subfolder>/`: verified-file
+  record, history of replaced files, and run summaries read by `fleet`.
+- Files already on the destination are skipped by default; `--existing replace`
   replaces them and keeps the old version in history.
 - Only files copied in the run are verified by default; `--verify all` and
   `synctoceph verify` re-check everything.

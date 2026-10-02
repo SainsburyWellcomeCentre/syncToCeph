@@ -2,7 +2,7 @@
 exec synctoceph version
 stdout '^synctoceph dev \(commit unknown, built unknown, go1\.'
 exec synctoceph version --json
-stdout '"schema_version": 1'
+stdout '"schema_version": 2'
 exec synctoceph completion bash
 stdout 'bash completion V2 for synctoceph'
 exec synctoceph completion zsh
@@ -23,17 +23,17 @@ stdout '"running": false'
 ! exists home/.local/state/synctoceph
 
 # -q prints only the result.
-mkdir archive
+mkdir ceph
 config
 exec synctoceph run -q
 ! stdout 'Scanning'
 stdout '^RESULT    OK'
 
 # -v lists every file copied and verified (rsync's raw lines are in the log).
-cp src/a.txt src/b.txt
+cp src/LUMS0001/a.txt src/LUMS0001/b.txt
 exec synctoceph run -v
-stdout '\[1/1\] copied    b.txt'
-stdout '\[1/1\] verified  b.txt'
+stdout '\[1/1\] copied    LUMS0001/b.txt'
+stdout '\[1/1\] verified  LUMS0001/b.txt'
 ! stdout '>f\+\+\+'
 exec synctoceph logs -n 200
 stdout '>f\+\+\+\+\+\+\+\+\+ b.txt'
@@ -49,5 +49,5 @@ env XDG_STATE_HOME=/mnt/z/state
 ! exec synctoceph run
 stderr 'is on a Windows drive'
 
--- src/a.txt --
+-- src/LUMS0001/a.txt --
 a

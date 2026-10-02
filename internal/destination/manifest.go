@@ -1,10 +1,10 @@
 // This file manages the verified-file record (manifest.jsonl): one line per
 // verification, saying that a file of this size and modification time had
-// the same SHA-256 in the source and in the archive. `check-archived` relies
+// the same SHA-256 in the source and on the destination. `check-copied` relies
 // on it to say whether a source file is safe to delete. Lines are only ever
 // appended; when the file holds many outdated lines it is rewritten with the
 // latest line per file (compacted), atomically.
-package archive
+package destination
 
 import (
 	"bufio"
@@ -65,16 +65,16 @@ type Manifest struct {
 	Lines   int // lines in the file, including outdated ones
 }
 
-// LoadManifest reads the manifest of a machine folder. A missing manifest is
+// LoadManifest reads the manifest of a subfolder (see MetaDir). A missing manifest is
 // empty. Damaged lines (for example a line cut short by a crash) are skipped.
-func LoadManifest(machineDir string) (Manifest, error) {
+func LoadManifest(metaDir string) (Manifest, error) {
 	m := Manifest{Entries: map[string]Entry{}}
-	f, err := OpenRegular(MetaDir(machineDir), "manifest.jsonl")
+	f, err := OpenRegular(metaDir, "manifest.jsonl")
 	if errors.Is(err, os.ErrNotExist) {
 		return m, nil
 	}
 	if err != nil {
-		return m, fmt.Errorf("opening %s: %w", ManifestPath(machineDir), err)
+		return m, fmt.Errorf("opening %s: %w", ManifestPath(metaDir), err)
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
@@ -88,7 +88,7 @@ func LoadManifest(machineDir string) (Manifest, error) {
 		m.Entries[e.Path] = e
 	}
 	if err := scanner.Err(); err != nil {
-		return m, fmt.Errorf("reading %s: %w", ManifestPath(machineDir), err)
+		return m, fmt.Errorf("reading %s: %w", ManifestPath(metaDir), err)
 	}
 	return m, nil
 }
@@ -100,8 +100,8 @@ type ManifestWriter struct {
 }
 
 // OpenManifestWriter opens the manifest for appending, creating it if needed.
-func OpenManifestWriter(machineDir string) (*ManifestWriter, error) {
-	path := ManifestPath(machineDir)
+func OpenManifestWriter(metaDir string) (*ManifestWriter, error) {
+	path := ManifestPath(metaDir)
 	if err := NoSymlinks(path); err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func OpenManifestWriter(machineDir string) (*ManifestWriter, error) {
 }
 
 // Append adds one verified file. Call it only after the SHA-256 of the
-// source and the archive copy have been compared and found equal.
+// source and the destination copy have been compared and found equal.
 func (w *ManifestWriter) Append(e Entry) error {
 	e.SchemaVersion = ManifestSchemaVersion
 	data, err := json.Marshal(e)
@@ -151,8 +151,8 @@ func (m Manifest) NeedsCompaction() bool {
 
 // Compact rewrites the manifest with only the latest entry for each file.
 // The new file replaces the old one atomically, so no record is ever lost.
-func Compact(machineDir string) error {
-	m, err := LoadManifest(machineDir)
+func Compact(metaDir string) error {
+	m, err := LoadManifest(metaDir)
 	if err != nil {
 		return err
 	}
@@ -169,5 +169,5 @@ func Compact(machineDir string) error {
 		}
 		data = append(append(data, line...), '\n')
 	}
-	return platform.WriteFileAtomic(ManifestPath(machineDir), data, 0o644)
+	return platform.WriteFileAtomic(ManifestPath(metaDir), data, 0o644)
 }

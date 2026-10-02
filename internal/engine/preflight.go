@@ -3,7 +3,7 @@
 //
 // This file is the preflight: the checks that run before anything is
 // written. If any check fails, the run stops with an explanation and the
-// archive is not touched.
+// destination is not touched.
 package engine
 
 import (
@@ -16,8 +16,8 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/config"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/platform"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/ui"
 )
@@ -55,18 +55,22 @@ func Preflight(s config.Settings) (string, error) {
 	if err := CheckMount(s); err != nil {
 		return "", err
 	}
-	// SAFETY: invariant 8 (symlinks on archive paths rejected).
-	if err := archive.NoSymlinks(s.MachineDir); err != nil {
-		return "", ui.ArchiveSymlink(s.Archive, err)
+	// SAFETY: invariant 8 (symlinks on destination paths rejected): checked from
+	// the filesystem root down to the records folder; animal folders are
+	// checked file by file when planning.
+	if err := destination.NoSymlinks(s.MetaDir); err != nil {
+		return "", ui.DestinationSymlink(s.Destination, err)
 	}
-	// SAFETY: invariant 6 (archive root never created): a missing archive root is an
+	// SAFETY: invariant 6 (destination never created): a missing destination is an
 	// error, never something to create.
-	info, err := os.Lstat(s.Archive)
+	info, err := os.Lstat(s.Destination)
 	if err != nil || !info.IsDir() {
-		return "", ui.ArchiveMissing(s.Archive, err)
+		return "", ui.DestinationMissing(s.Destination, err)
 	}
-	if info, err := os.Lstat(s.MachineDir); err == nil && !info.IsDir() {
-		return "", ui.MachineDirNotFolder(s.MachineDir)
+	for _, dir := range []string{destination.MetaRoot(s.Destination), s.MetaDir} {
+		if info, err := os.Lstat(dir); err == nil && !info.IsDir() {
+			return "", ui.MetaDirNotFolder(dir)
+		}
 	}
 	if info, err := os.Stat(s.Source); err != nil || !info.IsDir() {
 		return "", ui.SourceMissing(s.Source, err)
@@ -84,7 +88,7 @@ func Preflight(s config.Settings) (string, error) {
 	return path, nil
 }
 
-// CheckMount checks require_mount: it must be a mount point, the archive
+// CheckMount checks require_mount: it must be a mount point, the destination
 // must be inside it, and on the same filesystem. It reads only the mount
 // table until the mount is known to be present.
 func CheckMount(s config.Settings) error {
@@ -92,26 +96,26 @@ func CheckMount(s config.Settings) error {
 		return nil
 	}
 	// SAFETY: invariant 6 (never write into an empty mount point).
-	if !platform.Within(s.Archive, s.RequireMount) {
-		return ui.MountNotContainingArchive(s.RequireMount, s.Archive)
+	if !platform.Within(s.Destination, s.RequireMount) {
+		return ui.MountNotContainingDestination(s.RequireMount, s.Destination)
 	}
 	mounts, err := platform.ReadMounts()
 	if err != nil {
 		return ui.MountTableUnreadable(err)
 	}
 	if !platform.IsMountPoint(mounts, s.RequireMount) {
-		return ui.NotMounted(s.RequireMount, s.Archive)
+		return ui.NotMounted(s.RequireMount, s.Destination)
 	}
-	if err := archive.NoSymlinks(s.RequireMount); err != nil {
-		return ui.ArchiveSymlink(s.RequireMount, err)
+	if err := destination.NoSymlinks(s.RequireMount); err != nil {
+		return ui.DestinationSymlink(s.RequireMount, err)
 	}
 	mountInfo, err1 := os.Stat(s.RequireMount)
-	archiveInfo, err2 := os.Stat(s.Archive)
+	destInfo, err2 := os.Stat(s.Destination)
 	if err1 != nil || err2 != nil {
-		return ui.ArchiveMissing(s.Archive, errors.Join(err1, err2))
+		return ui.DestinationMissing(s.Destination, errors.Join(err1, err2))
 	}
-	if deviceOf(mountInfo) != deviceOf(archiveInfo) {
-		return ui.ArchiveOnOtherFilesystem(s.RequireMount, s.Archive)
+	if deviceOf(mountInfo) != deviceOf(destInfo) {
+		return ui.DestinationOnOtherFilesystem(s.RequireMount, s.Destination)
 	}
 	return nil
 }
@@ -124,13 +128,14 @@ func deviceOf(info os.FileInfo) uint64 {
 	return 0
 }
 
-// CheckSeparate checks that source, archive and state folders are separate:
-// none may be inside another (after following symlinks), so the tool can
-// never copy the archive into itself or its own state into the archive.
+// CheckSeparate checks that source, destination and state folders are
+// separate: none may be inside another (after following symlinks), so the
+// tool can never copy the destination into itself or its own state into the
+// destination.
 func CheckSeparate(s config.Settings) error {
-	// SAFETY: invariant 7 (source, archive and state are separate, non-nested folders).
+	// SAFETY: invariant 7 (source, destination and state are separate, non-nested folders).
 	named := []struct{ name, path string }{
-		{"source", s.Source}, {"archive", s.Archive}, {"state folder", s.StateDir},
+		{"source", s.Source}, {"destination", s.Destination}, {"state folder", s.StateDir},
 	}
 	for i := range named {
 		named[i].path = resolve(named[i].path)

@@ -18,8 +18,8 @@ const GenericFix = "check the log with `synctoceph logs`, then run `synctoceph d
 
 // Rules shown when a setting has a wrong value.
 const (
-	MachineNameRule  = "use 1 to 63 letters, digits, dots, dashes or underscores, starting with a letter or digit"
-	ExcludeRule      = "use a simple pattern such as \"*.tmp\" or \"Thumbs.db\" (* ? and [abc] are allowed)"
+	SubfolderRule    = "use 1 to 63 letters, digits, dots, dashes or underscores, starting with a letter or digit, for example behaviour or ephys"
+	ExcludeRule      = "use a simple pattern such as \"*.tmp\", \"Thumbs.db\" or \"scratch/\" (* ? and [abc] are allowed; a trailing / means folders only)"
 	AbsolutePathRule = "use a full path starting with /, for example /mnt/d/acquisition"
 )
 
@@ -28,12 +28,13 @@ const (
 	ReasonReserved = "reserved name (.syncToCeph and .syncToCeph-partial are used by synctoceph)"
 	ReasonSymlink  = "symlink (never followed)"
 	ReasonSpecial  = "special file (pipe, socket or device)"
+	ReasonNoAnimal = "not inside an animal folder (each folder directly in the source is one animal; files next to them are not copied)"
 )
 
-// Descriptions of archive entries that block a copy.
+// Descriptions of destination entries that block a copy.
 const (
-	ArchiveEntryIsSymlink = "the archive has a symlink at this path"
-	ArchiveEntryNotFile   = "the archive has a folder (or other non-file) at this path"
+	DestEntryIsSymlink = "the destination has a symlink at this path"
+	DestEntryNotFile   = "the destination has a folder (or other non-file) at this path"
 )
 
 // BadProfile: an invalid --profile name.
@@ -65,9 +66,17 @@ func BadConfigFile(file string, err error) error {
 
 // UnknownConfigKeys: the config file has keys synctoceph does not know.
 func UnknownConfigKeys(file string, keys []string) error {
+	fix := "remove or correct them; valid settings are listed in docs/configuration.md"
+	for _, key := range keys {
+		if key == "archive" || key == "machine_name" {
+			fix = "this config is from an older version: archive is now called destination, and\n" +
+				"machine_name is replaced by subfolder (this machine's folder inside every animal folder).\n" +
+				"Run `synctoceph init --force` to answer the questions again, or edit the file (see docs/configuration.md)"
+		}
+	}
 	return &Problem{What: fmt.Sprintf("unknown setting(s) in %s: %s", file, strings.Join(keys, ", ")),
 		Why: "a misspelt setting would otherwise be silently ignored; extra rsync options are never accepted",
-		Fix: "remove or correct them; valid settings are listed in docs/configuration.md"}
+		Fix: fix}
 }
 
 // BadSetting: a setting has an invalid value.
@@ -79,7 +88,7 @@ func BadSetting(key, value, rule string) error {
 // MissingSetting: a required setting is empty.
 func MissingSetting(key string) error {
 	return &Problem{What: "the setting " + key + " is missing",
-		Why: "synctoceph has no built-in data folders",
+		Why: "synctoceph has no built-in data folders or names",
 		Fix: "run `synctoceph init`, or add " + key + " to the config file"}
 }
 
@@ -133,24 +142,25 @@ func RsyncTooOld(path, version string) error {
 		Fix: "update rsync, e.g. `sudo apt update && sudo apt install rsync`"}
 }
 
-// ArchiveSymlink: a symlink on the archive path.
-func ArchiveSymlink(path string, err error) error {
-	return &Problem{What: "the archive path " + path + " goes through a symlink", Err: err,
-		Why: "a symlink could send copies somewhere other than the archive",
-		Fix: "set archive (and require_mount) to the real folder; `realpath " + path + "` shows it"}
+// DestinationSymlink: a symlink on the destination path.
+func DestinationSymlink(path string, err error) error {
+	return &Problem{What: "the destination path " + path + " goes through a symlink", Err: err,
+		Why: "a symlink could send copies somewhere other than the destination",
+		Fix: "set destination (and require_mount) to the real folder; `realpath " + path + "` shows it"}
 }
 
-// ArchiveMissing: the archive root does not exist.
-func ArchiveMissing(archive string, err error) error {
-	return &Problem{What: "the archive folder " + archive + " does not exist or is not reachable", Err: err,
-		Why: "synctoceph never creates the archive folder, so that it can never write into an empty mount point by mistake",
-		Fix: "check that the lab share is mounted (`synctoceph doctor` shows how), or correct archive in the config"}
+// DestinationMissing: the destination folder does not exist.
+func DestinationMissing(dest string, err error) error {
+	return &Problem{What: "the destination folder " + dest + " does not exist or is not reachable", Err: err,
+		Why: "synctoceph never creates the destination folder, so that it can never write into an empty mount point by mistake",
+		Fix: "check that ceph is mounted (`synctoceph doctor` shows how), or correct destination in the config"}
 }
 
-// MachineDirNotFolder: the machine folder exists but is not a folder.
-func MachineDirNotFolder(dir string) error {
+// MetaDirNotFolder: synctoceph's records folder exists but is not a folder.
+func MetaDirNotFolder(dir string) error {
 	return &Problem{What: dir + " exists but is not a folder",
-		Fix: "rename or remove it, or choose another machine_name"}
+		Why: "synctoceph keeps its records (verified files, history, run summaries) there",
+		Fix: "rename or move it by hand"}
 }
 
 // SourceMissing: the source folder is missing.
@@ -168,40 +178,40 @@ func SourceUnreadable(source string, err error) error {
 
 // ScanError: one folder or file in the source could not be read.
 func ScanError(rel string, err error) string {
-	return fmt.Sprintf("cannot read %s in the source (%v); it was not archived. Check its permissions", rel, err)
+	return fmt.Sprintf("cannot read %s in the source (%v); it was not copied. Check its permissions", rel, err)
 }
 
-// MountNotContainingArchive: require_mount does not contain archive.
-func MountNotContainingArchive(mount, archive string) error {
-	return &Problem{What: "require_mount " + mount + " does not contain the archive " + archive,
-		Fix: "set require_mount to the mount point of the lab share, for example /mnt/z"}
+// MountNotContainingDestination: require_mount does not contain destination.
+func MountNotContainingDestination(mount, dest string) error {
+	return &Problem{What: "require_mount " + mount + " does not contain the destination " + dest,
+		Fix: "set require_mount to the mount point of the ceph share, for example /mnt/ceph"}
 }
 
 // MountTableUnreadable: /proc/self/mountinfo cannot be read.
 func MountTableUnreadable(err error) error {
 	return &Problem{What: "cannot read the list of mounted drives", Err: err,
-		Why: "synctoceph must check that the lab share is mounted before writing to it",
+		Why: "synctoceph must check that ceph is mounted before writing to it",
 		Fix: "run synctoceph on Linux or WSL2"}
 }
 
 // NotMounted: the required mount is not mounted.
-func NotMounted(mount, archive string) error {
+func NotMounted(mount, dest string) error {
 	return &Problem{What: mount + " is not mounted",
-		Why: "without the lab share, " + archive + " would be an empty local folder; synctoceph never writes there",
-		Fix: "mount the share (`synctoceph doctor` prints the commands), then run again"}
+		Why: "without the network drive, " + dest + " would be an empty local folder; synctoceph never writes there",
+		Fix: "mount the share (`synctoceph doctor` prints the commands; see docs/mounting.md), then run again"}
 }
 
-// ArchiveOnOtherFilesystem: archive is not on the required mount.
-func ArchiveOnOtherFilesystem(mount, archive string) error {
-	return &Problem{What: "the archive " + archive + " is not on the filesystem mounted at " + mount,
+// DestinationOnOtherFilesystem: destination is not on the required mount.
+func DestinationOnOtherFilesystem(mount, dest string) error {
+	return &Problem{What: "the destination " + dest + " is not on the filesystem mounted at " + mount,
 		Why: "another drive is mounted inside it, so the check that the share is present would be meaningless",
-		Fix: "set require_mount to the mount point that actually holds the archive (`findmnt -T " + archive + "` shows it)"}
+		Fix: "set require_mount to the mount point that actually holds the destination (`findmnt -T " + dest + "` shows it)"}
 }
 
-// PathsOverlap: two of source, archive and state are nested.
+// PathsOverlap: two of source, destination and state are nested.
 func PathsOverlap(aName, aPath, bName, bPath string) error {
 	return &Problem{What: fmt.Sprintf("the %s (%s) and the %s (%s) overlap", aName, aPath, bName, bPath),
-		Why: "one would be copied into the other, or the archive into itself",
+		Why: "one would be copied into the other, or the destination into itself",
 		Fix: "use separate folders, none inside another"}
 }
 

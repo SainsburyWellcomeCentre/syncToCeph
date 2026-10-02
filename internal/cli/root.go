@@ -13,8 +13,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/config"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/ui"
 )
 
@@ -51,7 +51,7 @@ func Main() int {
 	root.SetArgs(os.Args[1:])
 	cmd, err := root.ExecuteC()
 	if err == nil {
-		return archive.ExitOK
+		return destination.ExitOK
 	}
 	var exit exitError
 	if errors.As(err, &exit) {
@@ -61,10 +61,10 @@ func Main() int {
 	var usage usageError
 	if errors.As(err, &usage) || strings.HasPrefix(err.Error(), "unknown command") {
 		p.Line(ui.MarkError, err.Error()+"\n"+ui.SeeHelp(cmd.CommandPath()))
-		return archive.ExitUsage
+		return destination.ExitUsage
 	}
 	p.Problem(err)
-	return archive.ExitFailed
+	return destination.ExitFailed
 }
 
 // NewRoot builds the full command tree. It is also used to generate the
@@ -95,7 +95,7 @@ func NewRoot() *cobra.Command {
 	flags.BoolVar(&g.noColor, "no-color", false, "never use colour (NO_COLOR is also honoured)")
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error { return usageError{err} })
 	root.AddCommand(newInit(g), newDoctor(g), newRun(g), newSchedule(g), newStatus(g), newLogs(g),
-		newStop(g), newVerify(g), newCheckArchived(g), newHistory(g), newFleet(g), newService(g),
+		newStop(g), newVerify(g), newCheckCopied(g), newHistory(g), newFleet(g), newService(g),
 		newCompletion(), newVersion())
 	return root
 }

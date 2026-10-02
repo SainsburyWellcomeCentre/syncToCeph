@@ -1,6 +1,6 @@
 # SAFETY: invariant 10: rsync inherits the lock, so even if synctoceph itself is killed,
 # no second run can start while that rsync is still running.
-mkdir archive
+mkdir ceph
 chmod 755 bin/rsync
 config
 env ORIGPATH=$PATH
@@ -20,7 +20,7 @@ env PATH=$ORIGPATH
 exec synctoceph run
 stdout 'Copied and verified 1 file'
 
--- src/a.txt --
+-- src/LUMS0001/a.txt --
 a
 -- bin/rsync --
 #!/bin/sh

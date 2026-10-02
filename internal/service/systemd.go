@@ -41,7 +41,7 @@ const stopTimeoutSeconds = 60
 func UnitContent(binary, profile string) string {
 	return fmt.Sprintf(`# Written by synctoceph service install. Remove with: synctoceph service uninstall --profile %[2]s
 [Unit]
-Description=synctoceph scheduled archive sync (profile %[2]s)
+Description=synctoceph scheduled sync to ceph (profile %[2]s)
 After=network-online.target
 
 [Service]

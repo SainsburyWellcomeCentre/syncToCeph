@@ -1,22 +1,26 @@
 # doctor checks the setup and changes nothing.
-mkdir archive
+mkdir ceph
 config interval=4h
 exec synctoceph doctor
-stdout 'OK        Configuration .* is valid'
+stdout 'OK        Configuration .* is valid; data goes to .*/ceph/<animal>/behaviour'
 stdout 'OK        rsync 3\.'
 stdout 'OK        Source .* exists and is readable'
-stdout 'will be created by the first run'
+stdout 'Animal folders in the source \(2\): LUMS0001, LUMS0002'
+stdout 'OK        Destination .*/ceph exists and is writable'
 stdout 'Schedule: every 4h'
 stdout 'RESULT    No problems found.'
-! exists archive/scope-01
+! exists ceph/.syncToCeph
+! exists ceph/LUMS0001
 ! exists home/.local/state/synctoceph
 
 # A missing mount is explained, with the commands to mount it.
-mkdir mnt/z/lab-archive
-config archive=$WORK/mnt/z/lab-archive require_mount=$WORK/mnt/z
+mkdir mnt/ceph/project
+config destination=$WORK/mnt/ceph/project require_mount=$WORK/mnt/ceph
 ! exec synctoceph doctor
-stdout 'ERROR     .*mnt/z is not mounted'
-stdout 'sudo mount -t cifs'
+stdout 'ERROR     .*mnt/ceph is not mounted'
+stdout 'sudo apt install cifs-utils'
+stdout 'sudo mount -t cifs //ceph-gw02.hpc.swc.ucl.ac.uk/SHARE'
+stdout 'domain=ad.swc.ucl.ac.uk'
 stdout 'RESULT    1 problem found'
 
 # Problems with the config are reported, and the other checks still run.
@@ -25,5 +29,7 @@ config bogus=1
 stdout '"problems": 1'
 stdout '"name": "rsync"'
 
--- src/a.txt --
+-- src/LUMS0001/a.txt --
 a
+-- src/LUMS0002/b.txt --
+b

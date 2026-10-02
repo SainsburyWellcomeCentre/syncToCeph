@@ -1,20 +1,28 @@
-# SAFETY: invariant 1: deleting files from the source never deletes them from the archive.
-mkdir archive
+# SAFETY: invariant 1: deleting files from the source never deletes them from the destination.
+mkdir ceph
 config
 exec synctoceph run
-stdout 'Copied and verified 3 files'
-rm src/session1
+stdout 'Copied and verified 4 files'
+rm src/LUMS0001/session1
 exec synctoceph run
 stdout 'RESULT    OK'
-exists archive/scope-01/session1/a.tif
-exists archive/scope-01/session1/b.tif
+exists ceph/LUMS0001/behaviour/session1/a.tif
+exists ceph/LUMS0001/behaviour/session1/b.tif
 
-# check-archived still says the remaining source is safe.
-exec synctoceph check-archived src
+# A whole animal folder deleted from the source stays on ceph too.
+rm src/LUMS0002
+exec synctoceph run
+stdout 'RESULT    OK'
+exists ceph/LUMS0002/behaviour/c.tif
+
+# check-copied still says the remaining source is safe.
+exec synctoceph check-copied src
 stdout 'SAFE'
 
--- src/session1/a.tif --
+-- src/LUMS0001/session1/a.tif --
 a
--- src/session1/b.tif --
+-- src/LUMS0001/session1/b.tif --
 b
--- src/keep.txt --
+-- src/LUMS0001/keep.txt --
+-- src/LUMS0002/c.tif --
+c

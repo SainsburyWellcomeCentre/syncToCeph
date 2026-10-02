@@ -2,14 +2,14 @@
 
 ## synctoceph verify
 
-Re-check archived files with SHA-256
+Re-check copied files with SHA-256
 
 ### Synopsis
 
-Reads each source file under PATH (default: the whole source) and its archive
-copy, compares their SHA-256, and records the ones that match as verified.
+Reads each source file under PATH (default: the whole source) and its copy on
+ceph, compares their SHA-256, and records the ones that match as verified.
 Use it once for data copied before synctoceph was used, or to check the
-archive at any time. Exit code 0 means every file under PATH was verified.
+copies at any time. Exit code 0 means every file under PATH was verified.
 
 ```
 synctoceph verify [PATH] [flags]
@@ -33,5 +33,5 @@ synctoceph verify [PATH] [flags]
 
 ### SEE ALSO
 
-* [synctoceph](synctoceph.md)	 - Copy acquisition data to the lab archive, verified with SHA-256
+* [synctoceph](synctoceph.md)	 - Copy acquisition data to ceph with rsync, verified with SHA-256
 

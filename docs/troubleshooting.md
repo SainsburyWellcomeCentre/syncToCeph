@@ -15,7 +15,9 @@ Run `synctoceph init`. synctoceph has no built-in data folders. With
 **`unknown setting(s) in ...: ...`**
 A key in the config file is misspelt or does not exist. Valid keys are in
 [configuration.md](configuration.md). There is no key for rsync options, by
-design.
+design. If the keys are `archive` and `machine_name`, the file is from an
+earlier version: `archive` is now `destination`, and `machine_name` is
+replaced by `subfolder`. Run `synctoceph init --force`.
 
 **`the setting KEY = "VALUE" is not valid`**, **`the setting KEY is missing`**,
 **`both interval and at are set`**, **`cannot read the configuration ...`**
@@ -36,48 +38,62 @@ Use one or the other: `--profile NAME` for one profile, `--all-profiles` for
 every profile.
 
 **`Profiles A, B all copy into ...`** (a NOTE from `init` or `doctor`)
-Two profiles write the same machine folder. That works, but files with the
-same path in both sources meet in one place. If the sources are unrelated,
-give each profile its own `machine_name`. See
+Two profiles write the same subfolder of the same destination. That works,
+but files with the same path in both sources meet in one place. If the
+sources hold different kinds of data, give each profile its own `subfolder`.
+See
 [configuration.md](configuration.md#several-jobs-on-one-computer-profiles).
 
 **`the time zone TZ="..." is not known`**
 Set `TZ` to a name such as `Europe/London`, or unset it.
 
-## The archive and the mount
+## The destination and the mount
 
 **`... is not mounted`**
-`require_mount` is set and nothing is mounted there. Mount the share
-([mounting.md](mounting.md)); `synctoceph doctor` prints the commands.
+`require_mount` is set and nothing is mounted there. Mount ceph
+([mounting.md](mounting.md)); `synctoceph doctor` prints the commands. With
+`x-systemd.automount` in `/etc/fstab`, check that the credentials file and
+the network are fine: `ls /mnt/ceph` shows the error.
 
-**`require_mount ... does not contain the archive ...`**
-`archive` must be inside `require_mount`, for example `/mnt/z/lab-archive`
-inside `/mnt/z`.
+**`require_mount ... does not contain the destination ...`**
+`destination` must be inside `require_mount`, for example
+`/mnt/ceph/project` inside `/mnt/ceph`.
 
-**`the archive ... is not on the filesystem mounted at ...`**
-Another filesystem is mounted between the mount point and the archive folder.
-`findmnt -T <archive>` shows which mount holds the archive; use that as
+**`the destination ... is not on the filesystem mounted at ...`**
+Another filesystem is mounted between the mount point and the destination
+folder. `findmnt -T <destination>` shows which mount holds it; use that as
 `require_mount`.
 
-**`the archive folder ... does not exist or is not reachable`**
-synctoceph never creates the archive root. Mount the share, or create the
-folder yourself if it really is new, or correct `archive`.
+**`the destination folder ... does not exist or is not reachable`**
+synctoceph never creates the destination folder. Mount ceph, or create the
+folder yourself if it really is new, or correct `destination`.
 
-**`the archive path ... goes through a symlink`**
+**`the destination path ... goes through a symlink`**
 Use the real path: `realpath <path>` prints it.
 
-**`... was not copied: ... the archive has a symlink at this path`**, **`... the archive has a file at ... where the source has a folder`**
-Something in the machine folder has the same name as a source file or folder
-but is of another kind. synctoceph never deletes or follows it. Rename or move
-it by hand; the next run copies the file.
+**`... was not copied: ... the destination has a symlink at this path`**, **`... the destination has a file at ... where the source has a folder`**, **`... destination folder ... is a symlink`**
+Something on the destination (the animal folder, this machine's subfolder,
+or a folder below it) has the same name as a source file or folder but is of
+another kind, or is a symlink. synctoceph never deletes or follows it.
+Rename or move it by hand; the next run copies the file.
 
-**`another synctoceph run on this computer is writing to ...`**
-Two profiles on this computer use the same archive and `machine_name`. Give
-each its own `machine_name`.
+**`... not inside an animal folder ...`** (in the list of skipped files)
+The file is directly in the source folder. Only folders directly in the
+source are copied, each as one animal. Move the file into an animal folder,
+or check that `source` points at the folder that holds the animal folders.
+
+**`another synctoceph run on this computer is copying into the subfolder ...`**
+Two profiles on this computer use the same destination and `subfolder`, and
+one is running. Wait, or give each profile its own `subfolder`.
+
+**`cannot prepare the folder ...`**, **`cannot prepare the records folder ...`**
+synctoceph could not create an animal folder, its subfolder, or
+`.syncToCeph/<subfolder>/` on the destination. Check that you can write to
+the destination (`touch <destination>/test && rm <destination>/test`).
 
 **`you cannot write to ...`** (from `doctor`)
 Check the share's permissions and mount options; for cifs, `uid=` and `gid=`
-make the files yours.
+make the files yours (see [mounting.md](mounting.md)).
 
 ## The source
 
@@ -85,11 +101,11 @@ make the files yours.
 On WSL, check that the data drive is visible (`ls /mnt/d`). Correct `source`
 if it moved.
 
-**`cannot read ... in the source (...); it was not archived`**
+**`cannot read ... in the source (...); it was not copied`**
 A folder or file could not be read, usually because of permissions. Fix them
 and run again.
 
-**`the source (...) and the archive (...) overlap`** (or the state folder)
+**`the source (...) and the destination (...) overlap`** (or the state folder)
 One folder is inside another. Choose separate folders.
 
 **DEFERRED: files changed recently or during the sync**
@@ -111,17 +127,17 @@ run again after fixing the cause.
 
 ## Verification
 
-**`... is NOT archived: the archive copy differs from the source (SHA-256 mismatch)`**
-The copy in the archive does not match the source, although the source did not
+**`... is NOT copied and verified: the copy on the destination differs from the source (SHA-256 mismatch)`**
+The copy on ceph does not match the source, although the source did not
 change. The next run checks it again. If it repeats, compare both copies by
 hand; the storage may be faulty. `synctoceph run --existing replace` copies it
 again and keeps the damaged copy in history.
 
-**`... is NOT archived: the archive copy is missing`**
+**`... is NOT copied and verified: the copy on the destination is missing`**
 rsync did not produce the file (see the rsync lines in the log). Run again.
 
 **`cannot write the verified-file record ...`**
-The archive is full or mounted read-only.
+ceph is full or mounted read-only.
 
 ## Running, stopping and the state folder
 
@@ -182,7 +198,7 @@ rsync 3.2.7), with a Windows NTFS drive mounted by WSL as `9p` with
 | Does `fsync` work? | Yes, for files and for folders (no error). Whether Windows flushes to disk when asked was not measured. |
 | Does `flock` work? | Yes, between processes in the same WSL instance (a second lock was refused). |
 | Does `--partial-dir` work after an interruption? | Yes: the interrupted file was kept in `.syncToCeph-partial/`, nothing appeared under the final name. |
-| Full runs | Archive on drvfs: copy, repeat run ("nothing new"), `--verify all` and `check-archived` all behaved correctly; `init` suggested `require_mount = "/mnt/c"`. Source on drvfs: same; inode numbers stayed stable between runs. |
+| Full runs | Destination (then called the archive) on drvfs: copy, repeat run ("nothing new"), `--verify all` and `check-archived` (now `check-copied`) all behaved correctly; `init` suggested `require_mount = "/mnt/c"`. Source on drvfs: same; inode numbers stayed stable between runs. |
 | Is a mapped Windows drive visible to a scheduled task? | Not yet verified; see [scheduling.md](scheduling.md). |
 
 These checks used a local NTFS drive, not a network drive mapped through

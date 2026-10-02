@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 )
 
 // listLimit is how many file names a report shows before "... and N more".
@@ -20,39 +20,39 @@ const EscalateAfter = 24 * time.Hour
 
 // RunReport prints the report of a finished run. settle is the configured
 // settle time, mentioned in the deferral explanation.
-func RunReport(p *Printer, s archive.RunSummary, settle time.Duration, all bool) {
+func RunReport(p *Printer, s destination.RunSummary, settle time.Duration, all bool) {
 	took := Duration(s.FinishedAt.Sub(s.StartedAt))
 	switch {
 	case s.DryRun:
-		p.Line(MarkNote, "Dry run: nothing was written to the archive.")
+		p.Line(MarkNote, "Dry run: nothing was written to the destination.")
 		if len(s.WouldCopy) > 0 {
 			p.Line(MarkOK, fmt.Sprintf("Would copy %s (%s):", Files(s.Planned), Size(s.PlannedBytes))+"\n"+
 				fileList(s.WouldCopy, len(s.WouldCopy), all, ""))
-		} else if s.Result != archive.ResultFailed {
+		} else if s.Result != destination.ResultFailed {
 			p.Line(MarkOK, "Nothing to copy.")
 		}
 	case s.Copied > 0 && s.Copied == s.Verified:
 		p.Line(MarkOK, fmt.Sprintf("Copied and verified %s (%s) in %s", Files(s.Copied), Size(s.VerifiedBytes), took))
 	case s.Copied == 0 && s.Verified > 0:
-		p.Line(MarkOK, fmt.Sprintf("Nothing new to copy; checked %s already in the archive (%s) with SHA-256 in %s: they match.",
+		p.Line(MarkOK, fmt.Sprintf("Nothing new to copy; checked %s already on ceph (%s) with SHA-256 in %s: they match.",
 			Files(s.Verified), Size(s.VerifiedBytes), took))
 	case s.Copied > 0 || s.Verified > 0:
 		p.Line(MarkOK, fmt.Sprintf("Copied %s; verified %s (%s) in %s",
 			Files(s.Copied), Files(s.Verified), Size(s.VerifiedBytes), took))
-	case s.Result == archive.ResultOK || s.Result == archive.ResultPartial:
-		p.Line(MarkOK, fmt.Sprintf("Nothing new to copy; %s already archived and verified.", Files(s.UpToDate)))
+	case s.Result == destination.ResultOK || s.Result == destination.ResultPartial:
+		p.Line(MarkOK, fmt.Sprintf("Nothing new to copy; %s already copied and verified.", Files(s.UpToDate)))
 	}
 	if s.DeferredCount > 0 {
 		deferredBlock(p, s, settle, all)
 	}
 	if s.DifferingCount > 0 {
-		p.Line(MarkNote, fmt.Sprintf("%s already in the archive %s from the source and %s NOT replaced.",
+		p.Line(MarkNote, fmt.Sprintf("%s already on ceph %s from the source and %s NOT replaced.",
 			Files(s.DifferingCount), verb(s.DifferingCount, "differs", "differ"), verb(s.DifferingCount, "was", "were"))+"\n"+
 			"List them:        synctoceph status --differing\n"+
 			"Keep both copies: synctoceph run --existing replace   (old versions go to history)")
 	}
 	if s.Unverified > 0 && s.NewUnverified {
-		p.Line(MarkNote, fmt.Sprintf("%s in the archive %s the same size and time as the source, but synctoceph has not\n"+
+		p.Line(MarkNote, fmt.Sprintf("%s on ceph %s the same size and time as the source, but synctoceph has not\n"+
 			"checked %s contents yet (probably copied before synctoceph was used).\n"+
 			"Check once with: synctoceph verify", Files(s.Unverified), verb(s.Unverified, "has", "have"), verb(s.Unverified, "its", "their")))
 	}
@@ -70,7 +70,7 @@ func RunReport(p *Printer, s archive.RunSummary, settle time.Duration, all bool)
 }
 
 // deferredBlock prints the DEFERRED explanation.
-func deferredBlock(p *Printer, s archive.RunSummary, settle time.Duration, all bool) {
+func deferredBlock(p *Printer, s destination.RunSummary, settle time.Duration, all bool) {
 	now := s.FinishedAt
 	var lines []string
 	for i, d := range s.Deferred {
@@ -79,7 +79,7 @@ func deferredBlock(p *Printer, s archive.RunSummary, settle time.Duration, all b
 			break
 		}
 		detail := d.Reason
-		if d.Reason == archive.ReasonSettling && !d.ModifiedAt.IsZero() {
+		if d.Reason == destination.ReasonSettling && !d.ModifiedAt.IsZero() {
 			detail = "modified " + Ago(d.ModifiedAt, now)
 		}
 		lines = append(lines, fmt.Sprintf("  %s   %s", d.Path, detail))
@@ -104,21 +104,21 @@ func StuckDeferral(oldest, now time.Time) string {
 }
 
 // ResultLine returns the text of the final RESULT line.
-func ResultLine(s archive.RunSummary) string {
+func ResultLine(s destination.RunSummary) string {
 	switch s.Result {
-	case archive.ResultOK:
+	case destination.ResultOK:
 		if s.DryRun {
 			return "OK (dry run): nothing was changed."
 		}
-		return "OK: everything that needed copying is archived and verified."
-	case archive.ResultPartial:
-		return fmt.Sprintf("PARTIAL: %s %s not archived yet. Do not delete %s from the source.",
+		return "OK: everything that needed copying is on ceph and verified."
+	case destination.ResultPartial:
+		return fmt.Sprintf("PARTIAL: %s %s not copied yet. Do not delete %s from the source.",
 			Files(s.DeferredCount), verb(s.DeferredCount, "is", "are"), verb(s.DeferredCount, "it", "them"))
-	case archive.ResultInterrupted:
+	case destination.ResultInterrupted:
 		return "INTERRUPTED: the run was stopped before it finished; nothing from it is reported as\n" +
 			"verified. The next run continues where this one stopped."
 	}
-	return fmt.Sprintf("FAILED: %s. Files named above are not archived.\nDetails: synctoceph logs --run %s",
+	return fmt.Sprintf("FAILED: %s. Files named above are not copied.\nDetails: synctoceph logs --run %s",
 		plural(s.ErrorCount, "problem"), s.RunID)
 }
 
@@ -136,7 +136,7 @@ func fileList(paths []string, total int, all bool, indent string) string {
 }
 
 // skippedList formats skipped entries with their reasons.
-func skippedList(skipped []archive.SkippedFile, total int, all bool) string {
+func skippedList(skipped []destination.SkippedFile, total int, all bool) string {
 	var lines []string
 	for i, s := range skipped {
 		if i == listLimit && !all {

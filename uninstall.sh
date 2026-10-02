@@ -7,8 +7,8 @@
 #                                 them and asks before deleting anything
 #   ./uninstall.sh --purge --yes  the same, without asking (for scripts)
 #
-# It never touches the archive (including its .syncToCeph/ records and the
-# history of replaced files) or the source data.
+# It never touches the destination on ceph (including its .syncToCeph/
+# records and the history of replaced files) or the source data.
 set -eu
 
 say() { printf '==> %s\n' "$*"; }
@@ -71,8 +71,8 @@ if [ "$purge" -eq 1 ]; then
 	for file in "$config_dir"/*.toml; do
 		if [ -e "$file" ]; then note "  profile $(basename "$file" .toml): $file"; fi
 	done
-	note "It does not touch the archive (including its .syncToCeph/ records and the"
-	note "history of replaced files) or the source data."
+	note "It does not touch the destination on ceph (including its .syncToCeph/"
+	note "records and the history of replaced files) or the source data."
 	if [ "$yes" -eq 0 ]; then
 		[ -t 0 ] || die "--purge asks for confirmation; run it in a terminal, or add --yes. Nothing was changed."
 		printf 'Delete them? Type yes to continue: '
@@ -136,7 +136,7 @@ if [ "$purge" -eq 1 ]; then
 	done
 fi
 
-say "Done. synctoceph never touches the archive or the source; your data is where it was."
+say "Done. synctoceph never touches ceph or the source; your data is where it was."
 if [ "$purge" -eq 0 ]; then
 	note "Kept (delete with ./uninstall.sh --purge):"
 	note "  configuration:  $config_dir"

@@ -1,9 +1,10 @@
 // This file lets people browse and restore previous versions of files. When
 // a run in "replace" mode copies over a file, rsync first moves the old
-// version to .syncToCeph/history/<run-id>/<same relative path>. History is
-// never pruned automatically. Restoring copies an old version to a folder
-// outside the archive; it never overwrites anything.
-package archive
+// version to <destination>/.syncToCeph/<subfolder>/history/<run-id>/<path>,
+// where <path> is the file's path in the source (animal folder first).
+// History is never pruned automatically. Restoring copies an old version to
+// a folder outside the destination; it never overwrites anything.
+package destination
 
 import (
 	"crypto/sha256"
@@ -43,8 +44,8 @@ type HistoryFile struct {
 
 // ListHistory returns the runs that kept previous versions, oldest first.
 // Runs whose history folder is empty (nothing was replaced) are left out.
-func ListHistory(machineDir string) ([]HistoryRun, error) {
-	root := HistoryRoot(machineDir)
+func ListHistory(metaDir string) ([]HistoryRun, error) {
+	root := HistoryRoot(metaDir)
 	entries, err := os.ReadDir(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -57,7 +58,7 @@ func ListHistory(machineDir string) ([]HistoryRun, error) {
 		if !entry.IsDir() || !ValidRunID(entry.Name()) {
 			continue
 		}
-		files, err := ListHistoryFiles(machineDir, entry.Name())
+		files, err := ListHistoryFiles(metaDir, entry.Name())
 		if err != nil {
 			return nil, err
 		}
@@ -75,11 +76,11 @@ func ListHistory(machineDir string) ([]HistoryRun, error) {
 }
 
 // ListHistoryFiles lists the previous versions kept by one run.
-func ListHistoryFiles(machineDir, runID string) ([]HistoryFile, error) {
+func ListHistoryFiles(metaDir, runID string) ([]HistoryFile, error) {
 	if !ValidRunID(runID) {
 		return nil, fmt.Errorf("%q is not a run ID", runID)
 	}
-	root := HistoryDir(machineDir, runID)
+	root := HistoryDir(metaDir, runID)
 	var files []HistoryFile
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -97,23 +98,24 @@ func ListHistoryFiles(machineDir, runID string) ([]HistoryFile, error) {
 		return nil
 	})
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("no history for run %s in %s", runID, HistoryRoot(machineDir))
+		return nil, fmt.Errorf("no history for run %s in %s", runID, HistoryRoot(metaDir))
 	}
 	return files, err
 }
 
-// Restore copies the previous version of rel (a file or a folder) kept by
-// run runID to toDir/rel. toDir must be outside archiveRoot, and existing
-// files are never overwritten. Each copy is checked with SHA-256.
-func Restore(archiveRoot, machineDir, runID, rel, toDir string) ([]string, error) {
+// Restore copies the previous version of rel (a file or a folder, as a path
+// in the source such as LUMS0014/session1) kept by run runID to toDir/rel.
+// toDir must be outside dest, and existing files are never overwritten. Each
+// copy is checked with SHA-256.
+func Restore(dest, metaDir, runID, rel, toDir string) ([]string, error) {
 	rel = filepath.Clean(rel)
 	if filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, "../") {
-		return nil, fmt.Errorf("%s must be a path relative to the machine folder", rel)
+		return nil, fmt.Errorf("%s must be a path relative to the source folder, such as ANIMAL/session1", rel)
 	}
-	if err := checkOutside(toDir, archiveRoot); err != nil {
+	if err := checkOutside(toDir, dest); err != nil {
 		return nil, err
 	}
-	files, err := ListHistoryFiles(machineDir, runID)
+	files, err := ListHistoryFiles(metaDir, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +125,7 @@ func Restore(archiveRoot, machineDir, runID, rel, toDir string) ([]string, error
 			continue
 		}
 		target := filepath.Join(toDir, f.Path)
-		if err := copyVerified(filepath.Join(HistoryDir(machineDir, runID), f.Path), target, f.MTime); err != nil {
+		if err := copyVerified(filepath.Join(HistoryDir(metaDir, runID), f.Path), target, f.MTime); err != nil {
 			return restored, err
 		}
 		restored = append(restored, target)
@@ -134,9 +136,9 @@ func Restore(archiveRoot, machineDir, runID, rel, toDir string) ([]string, error
 	return restored, nil
 }
 
-// checkOutside refuses a restore folder inside the archive, so a restore can
-// never overwrite or mix with live archive files.
-func checkOutside(toDir, archiveRoot string) error {
+// checkOutside refuses a restore folder inside the destination, so a restore
+// can never overwrite or mix with the copied files.
+func checkOutside(toDir, dest string) error {
 	resolved := toDir
 	for probe := toDir; ; probe = filepath.Dir(probe) {
 		if real, err := filepath.EvalSymlinks(probe); err == nil {
@@ -148,12 +150,12 @@ func checkOutside(toDir, archiveRoot string) error {
 			break
 		}
 	}
-	root := archiveRoot
-	if real, err := filepath.EvalSymlinks(archiveRoot); err == nil {
+	root := dest
+	if real, err := filepath.EvalSymlinks(dest); err == nil {
 		root = real
 	}
 	if platform.Within(filepath.Clean(resolved), root) {
-		return fmt.Errorf("the restore folder %s is inside the archive %s; choose a folder outside it", toDir, archiveRoot)
+		return fmt.Errorf("the restore folder %s is inside the destination %s; choose a folder outside it", toDir, dest)
 	}
 	return nil
 }

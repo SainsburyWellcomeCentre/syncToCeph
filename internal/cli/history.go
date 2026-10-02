@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/config"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/ui"
 )
 
@@ -27,7 +27,7 @@ func newHistory(g *globals) *cobra.Command {
 			}
 			p := printer(cmd, g)
 			if len(args) == 1 {
-				files, err := archive.ListHistoryFiles(s.MachineDir, args[0])
+				files, err := destination.ListHistoryFiles(s.MetaDir, args[0])
 				if err != nil {
 					return ui.HistoryUnavailable(err)
 				}
@@ -38,17 +38,17 @@ func newHistory(g *globals) *cobra.Command {
 				ui.HistoryFiles(p, args[0], files)
 				return nil
 			}
-			runs, err := archive.ListHistory(s.MachineDir)
+			runs, err := destination.ListHistory(s.MetaDir)
 			if err != nil {
 				return ui.HistoryUnavailable(err)
 			}
 			if asJSON {
 				if runs == nil {
-					runs = []archive.HistoryRun{}
+					runs = []destination.HistoryRun{}
 				}
 				return writeJSON(cmd.OutOrStdout(), map[string]any{"schema_version": JSONSchemaVersion, "runs": runs})
 			}
-			ui.HistoryRuns(p, archive.HistoryRoot(s.MachineDir), runs)
+			ui.HistoryRuns(p, destination.HistoryRoot(s.MetaDir), runs)
 			return nil
 		},
 	}
@@ -71,7 +71,7 @@ func newHistory(g *globals) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			restored, err := archive.Restore(s.Archive, s.MachineDir, args[0], args[1], dir)
+			restored, err := destination.Restore(s.Destination, s.MetaDir, args[0], args[1], dir)
 			p := printer(cmd, g)
 			for _, path := range restored {
 				p.Plain("  " + path)
@@ -83,7 +83,7 @@ func newHistory(g *globals) *cobra.Command {
 			return nil
 		},
 	}
-	restore.Flags().StringVar(&to, "to", "", "restore into folder `DIR` (must be outside the archive)")
+	restore.Flags().StringVar(&to, "to", "", "restore into folder `DIR` (must be outside the destination)")
 	cmd.AddCommand(list, restore)
 	return cmd
 }
@@ -106,24 +106,24 @@ func newFleet(g *globals) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				root = cfg.Archive
+				root = cfg.Destination
 			}
-			reports, err := archive.Fleet(root)
+			reports, err := destination.Fleet(root)
 			if err != nil {
 				return ui.FleetUnavailable(root, err)
 			}
 			if asJSON {
 				if reports == nil {
-					reports = []archive.MachineReport{}
+					reports = []destination.SubfolderReport{}
 				}
 				return writeJSON(cmd.OutOrStdout(), map[string]any{"schema_version": JSONSchemaVersion,
-					"archive": root, "machines": reports})
+					"destination": root, "subfolders": reports})
 			}
 			ui.FleetReport(printer(cmd, g), root, reports, time.Now())
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&root, "archive", "", "read the archive root `DIR` instead of the one in the config")
+	cmd.Flags().StringVar(&root, "destination", "", "read the destination `DIR` instead of the one in the config")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print machine-readable JSON")
 	return cmd
 }

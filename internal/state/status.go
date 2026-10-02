@@ -13,12 +13,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/platform"
 )
 
 // StatusSchemaVersion is the version of the status.json format.
-const StatusSchemaVersion = 1
+const StatusSchemaVersion = 2
 
 // recentRunsKept is how many short run records status.json keeps.
 const recentRunsKept = 20
@@ -44,9 +44,9 @@ type Status struct {
 	Schedule      string     `json:"schedule,omitempty"`
 	NextRunAt     *time.Time `json:"next_run_at,omitempty"`
 
-	LastRun       *archive.RunSummary `json:"last_run,omitempty"`
-	LastSuccessAt *time.Time          `json:"last_success_at,omitempty"`
-	RecentRuns    []RunBrief          `json:"recent_runs"`
+	LastRun       *destination.RunSummary `json:"last_run,omitempty"`
+	LastSuccessAt *time.Time              `json:"last_success_at,omitempty"`
+	RecentRuns    []RunBrief              `json:"recent_runs"`
 
 	// DeferredSince remembers when each deferred file was first deferred.
 	DeferredSince map[string]time.Time `json:"deferred_since,omitempty"`
@@ -56,7 +56,7 @@ type Status struct {
 	// LastDailyDate is the local date (YYYY-MM-DD) of the last daily run, and
 	// LastDailyAt the daily time it was for.
 	LastDailyDate string `json:"last_daily_date,omitempty"`
-	// UnverifiedReported is the number of unverified archive files last
+	// UnverifiedReported is the number of unverified files on the destination last
 	// reported, so the same suggestion is not repeated on every run.
 	UnverifiedReported int    `json:"unverified_reported,omitempty"`
 	LastDailyAt        string `json:"last_daily_at,omitempty"`
@@ -75,7 +75,7 @@ type RunBrief struct {
 }
 
 // AddRun records a finished run as the last run and in the recent list.
-func (s *Status) AddRun(r archive.RunSummary) {
+func (s *Status) AddRun(r destination.RunSummary) {
 	s.LastRun = &r
 	s.RecentRuns = append(s.RecentRuns, RunBrief{RunID: r.RunID, Result: r.Result, DryRun: r.DryRun,
 		StartedAt: r.StartedAt, FinishedAt: r.FinishedAt, Copied: r.Copied,

@@ -12,8 +12,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/config"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/state"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/ui"
 )
@@ -42,7 +42,7 @@ type Options struct {
 
 // Outcome is what a run leaves behind.
 type Outcome struct {
-	Summary archive.RunSummary
+	Summary destination.RunSummary
 	// PendingVerify lists files that were copied but not verified (the run
 	// was interrupted or verification failed); the next run checks them.
 	PendingVerify []string
@@ -52,10 +52,10 @@ type Outcome struct {
 type run struct {
 	o        Options
 	s        config.Settings
-	sum      archive.RunSummary
+	sum      destination.RunSummary
 	log      *state.Logger
-	manifest archive.Manifest
-	writer   *archive.ManifestWriter
+	manifest destination.Manifest
+	writer   *destination.ManifestWriter
 	previous map[string]bool // files earlier runs copied but did not verify
 	pending  map[string]bool // files this run leaves unverified
 	verified map[string]bool // verified in this run
@@ -75,12 +75,12 @@ func Run(ctx context.Context, o Options) Outcome {
 		r.previous[p] = true
 	}
 	host, _ := os.Hostname()
-	r.sum = archive.RunSummary{SchemaVersion: archive.SummarySchemaVersion, RunID: o.RunID,
-		Machine: r.s.MachineName, Hostname: host, Profile: r.s.Profile, Version: o.Version,
-		Source: r.s.Source, Archive: r.s.Archive, StartedAt: time.Now().UTC(), DryRun: r.s.DryRun,
+	r.sum = destination.RunSummary{SchemaVersion: destination.SummarySchemaVersion, RunID: o.RunID,
+		Subfolder: r.s.Subfolder, Hostname: host, Profile: r.s.Profile, Version: o.Version,
+		Source: r.s.Source, Destination: r.s.Destination, StartedAt: time.Now().UTC(), DryRun: r.s.DryRun,
 		Existing: r.s.Existing, Verify: r.s.Verify}
 	r.log.Info("Run started: %s -> %s (existing=%s, verify=%s, dry_run=%t)",
-		r.s.Source, r.s.MachineDir, r.s.Existing, r.s.Verify, r.s.DryRun)
+		r.s.Source, r.s.Target(), r.s.Existing, r.s.Verify, r.s.DryRun)
 	r.execute(ctx)
 	return r.finish(ctx)
 }
@@ -94,7 +94,7 @@ func (r *run) execute(ctx context.Context) {
 		return
 	}
 	if !r.s.DryRun {
-		release, ok := r.lockArchive()
+		release, ok := r.lockDestination()
 		if !ok {
 			return
 		}
@@ -111,8 +111,8 @@ func (r *run) execute(ctx context.Context) {
 	}
 	r.recordScan(scan)
 	r.event(Event{Kind: EventScanned, Summary: r.sum})
-	if r.manifest, err = archive.LoadManifest(r.s.MachineDir); err != nil {
-		r.fail(ui.ManifestUnreadable(archive.ManifestPath(r.s.MachineDir), err))
+	if r.manifest, err = destination.LoadManifest(r.s.MetaDir); err != nil {
+		r.fail(ui.ManifestUnreadable(destination.ManifestPath(r.s.MetaDir), err))
 		return
 	}
 	r.phase("planning", "")
@@ -123,8 +123,8 @@ func (r *run) execute(ctx context.Context) {
 		r.event(Event{Kind: EventPlanned, Summary: r.sum})
 		return
 	}
-	if r.writer, err = archive.OpenManifestWriter(r.s.MachineDir); err != nil {
-		r.fail(ui.ManifestUnwritable(archive.ManifestPath(r.s.MachineDir), err))
+	if r.writer, err = destination.OpenManifestWriter(r.s.MetaDir); err != nil {
+		r.fail(ui.ManifestUnwritable(destination.ManifestPath(r.s.MetaDir), err))
 		return
 	}
 	r.checkExisting(ctx, &plan)
@@ -142,23 +142,23 @@ func (r *run) execute(ctx context.Context) {
 	r.verifyCopies(ctx, plan.Copy)
 }
 
-// lockArchive creates the machine folder's metadata folders and takes the
-// same-machine archive lock. The returned function releases it.
-func (r *run) lockArchive() (func(), bool) {
-	if err := archive.EnsureMetaDirs(r.s.Archive, r.s.MachineDir); err != nil {
-		r.fail(ui.MetaDirFailed(r.s.MachineDir, err))
+// lockDestination creates the subfolder's records folder on the destination
+// and takes the same-computer lock there. The returned function releases it.
+func (r *run) lockDestination() (func(), bool) {
+	if err := destination.EnsureMetaDirs(r.s.Destination, r.s.Subfolder); err != nil {
+		r.fail(ui.MetaDirFailed(r.s.MetaDir, err))
 		return nil, false
 	}
-	lock, err := state.Acquire(archive.LockPath(r.s.MachineDir))
+	lock, err := state.Acquire(destination.LockPath(r.s.MetaDir))
 	switch {
 	case errors.Is(err, state.ErrLocked):
-		r.fail(ui.ArchiveBusy(r.s.MachineDir))
+		r.fail(ui.DestinationBusy(r.s.Subfolder))
 		return nil, false
 	case errors.Is(err, state.ErrLockUnsupported):
-		r.log.Warn("%s", ui.ArchiveLockUnsupported(archive.LockPath(r.s.MachineDir)))
+		r.log.Warn("%s", ui.LockUnsupported(destination.LockPath(r.s.MetaDir)))
 		return func() {}, true
 	case err != nil:
-		r.fail(ui.MetaDirFailed(r.s.MachineDir, err))
+		r.fail(ui.MetaDirFailed(r.s.MetaDir, err))
 		return nil, false
 	}
 	r.o.LockFiles = append(r.o.LockFiles, lock.File)
@@ -168,12 +168,12 @@ func (r *run) lockArchive() (func(), bool) {
 // finish closes the manifest and decides the result.
 func (r *run) finish(ctx context.Context) Outcome {
 	if err := r.writer.Close(); err != nil {
-		r.fail(ui.ManifestUnwritable(archive.ManifestPath(r.s.MachineDir), err))
+		r.fail(ui.ManifestUnwritable(destination.ManifestPath(r.s.MetaDir), err))
 	}
 	if r.appended > 0 {
 		r.manifest.Lines += r.appended
 		if r.manifest.NeedsCompaction() {
-			if err := archive.Compact(r.s.MachineDir); err != nil {
+			if err := destination.Compact(r.s.MetaDir); err != nil {
 				r.log.Warn("Could not compact the manifest: %v", err)
 			}
 		}
@@ -184,15 +184,15 @@ func (r *run) finish(ctx context.Context) Outcome {
 	r.sum.ErrorCount = len(r.sum.Errors)
 	switch {
 	case ctx.Err() != nil:
-		r.sum.Result = archive.ResultInterrupted
+		r.sum.Result = destination.ResultInterrupted
 	case r.sum.ErrorCount > 0:
-		r.sum.Result = archive.ResultFailed
+		r.sum.Result = destination.ResultFailed
 	case r.sum.DeferredCount > 0:
-		r.sum.Result = archive.ResultPartial
+		r.sum.Result = destination.ResultPartial
 	default:
-		r.sum.Result = archive.ResultOK
+		r.sum.Result = destination.ResultOK
 	}
-	r.sum.ExitCode = archive.ExitCode(r.sum.Result)
+	r.sum.ExitCode = destination.ExitCode(r.sum.Result)
 	r.sum.FinishedAt = time.Now().UTC()
 	r.log.Info("Run finished: %s (copied %d, verified %d, deferred %d, differing %d, errors %d)",
 		r.sum.Result, r.sum.Copied, r.sum.Verified, r.sum.DeferredCount, r.sum.DifferingCount, r.sum.ErrorCount)

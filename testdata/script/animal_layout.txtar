@@ -1,0 +1,46 @@
+# Several acquisition machines fill the same animal folders, each in its own
+# subfolder: here a behaviour rig, an ephys rig and a histology scope.
+mkdir ceph/LUMS0014
+config profile=behaviour subfolder=behaviour source=$WORK/behav-pc
+config profile=ephys subfolder=ephys source=$WORK/ephys-pc
+config profile=histology subfolder=histology source=$WORK/histo-pc
+exec synctoceph run --all-profiles
+stdout '^RESULT    OK: all 3 profiles finished'
+cmp ceph/LUMS0014/behaviour/2026-10-01/events.csv behav-pc/LUMS0014/2026-10-01/events.csv
+cmp ceph/LUMS0014/ephys/2026-10-01_g0/probe0.bin ephys-pc/LUMS0014/2026-10-01_g0/probe0.bin
+cmp ceph/LUMS0014/histology/slide1.tif histo-pc/LUMS0014/slide1.tif
+cmp ceph/LUMS0015/behaviour/2026-10-02/events.csv behav-pc/LUMS0015/2026-10-02/events.csv
+# A file someone put in the animal folder by hand is never touched.
+cmp ceph/LUMS0014/notes.txt expected-notes.txt
+
+# Files directly in the source belong to no animal: they are reported, not copied.
+exec synctoceph --profile behaviour status --json
+stdout '"path": "readme.txt"'
+stdout 'not inside an animal folder'
+! exists ceph/readme.txt
+! exists ceph/behaviour
+
+# Each machine keeps its records in its own folder under .syncToCeph/.
+exists ceph/.syncToCeph/behaviour/manifest.jsonl
+exists ceph/.syncToCeph/ephys/manifest.jsonl
+exists ceph/.syncToCeph/histology/manifest.jsonl
+
+# The run header shows where data goes.
+exec synctoceph --profile ephys run
+stdout '^  From      .*/ephys-pc/<animal>$'
+stdout '^  To        .*/ceph/<animal>/ephys$'
+
+-- ceph/LUMS0014/notes.txt --
+written by hand
+-- expected-notes.txt --
+written by hand
+-- behav-pc/LUMS0014/2026-10-01/events.csv --
+t,lick
+-- behav-pc/LUMS0015/2026-10-02/events.csv --
+t,lick,reward
+-- behav-pc/readme.txt --
+loose file
+-- ephys-pc/LUMS0014/2026-10-01_g0/probe0.bin --
+spikes
+-- histo-pc/LUMS0014/slide1.tif --
+image

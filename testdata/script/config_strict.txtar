@@ -4,11 +4,25 @@ stderr 'no configuration found'
 stderr 'run `synctoceph init`'
 
 # SAFETY: invariant 1: unknown keys are errors; rsync options can never be passed through.
-mkdir archive
+mkdir ceph
 config rsync_options=--delete
 ! exec synctoceph run
 stderr 'unknown setting\(s\) .*: rsync_options'
-! exists archive/scope-01
+! exists ceph/.syncToCeph
+
+# A config from before the animal-first layout gets an explanation.
+config archive=$WORK/ceph machine_name=scope-01
+! exec synctoceph run
+stderr 'unknown setting\(s\) .*: archive, machine_name'
+stderr 'archive is now called destination'
+
+config subfolder=
+! exec synctoceph run
+stderr 'the setting subfolder is missing'
+
+config subfolder=a/b
+! exec synctoceph run
+stderr 'the setting subfolder = "a/b" is not valid'
 
 config existing=overwrite
 ! exec synctoceph run

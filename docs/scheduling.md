@@ -100,4 +100,4 @@ regularly.
 
 ---
 
-Previous: [Mounting the share](mounting.md) · Next: [Operations](operations.md) · [All documentation](README.md) · [Home](../README.md)
+Previous: [Mounting ceph](mounting.md) · Next: [Operations](operations.md) · [All documentation](README.md) · [Home](../README.md)

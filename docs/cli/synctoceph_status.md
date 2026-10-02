@@ -7,8 +7,8 @@ Show what synctoceph is doing and the last result
 ### Synopsis
 
 Shows whether a run or the scheduler is active, the result of the last run,
-the next scheduled run, and files that are deferred or differ from the
-archive. --all-profiles shows one line per profile instead. Reads only; it
+the next scheduled run, and files that are deferred or differ from their
+copy on ceph. --all-profiles shows one line per profile instead. Reads only; it
 never starts anything.
 
 ```
@@ -20,7 +20,7 @@ synctoceph status [flags]
 ```
       --all-profiles   show one line for every profile
       --deferred       list files left for a later run
-      --differing      list files in the archive that differ from the source and were not replaced
+      --differing      list files on ceph that differ from the source and were not replaced
   -h, --help           help for status
       --json           print machine-readable JSON
 ```
@@ -36,5 +36,5 @@ synctoceph status [flags]
 
 ### SEE ALSO
 
-* [synctoceph](synctoceph.md)	 - Copy acquisition data to the lab archive, verified with SHA-256
+* [synctoceph](synctoceph.md)	 - Copy acquisition data to ceph with rsync, verified with SHA-256
 

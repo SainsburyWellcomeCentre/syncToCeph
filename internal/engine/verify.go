@@ -1,5 +1,5 @@
-// This file verifies copies. A file counts as archived only when the SHA-256
-// of the source file and of the archive copy are equal, and the source file
+// This file verifies copies. A file counts as copied only when the SHA-256 of
+// the source file and of its destination copy are equal, and the source file
 // still has the size, modification time and inode recorded by the scan (so
 // it did not change while being copied). A source file that changed is
 // deferred to a later run, not treated as a failure.
@@ -18,17 +18,18 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/config"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 )
 
 // hashBufferSize is how much of a file is read at a time while hashing.
 const hashBufferSize = 1 << 20
 
-// errMismatch means the archive copy's content differs from the source.
-var errMismatch = errors.New("the archive copy differs from the source (SHA-256 mismatch)")
+// errMismatch means the destination copy's content differs from the source.
+var errMismatch = errors.New("the copy on the destination differs from the source (SHA-256 mismatch)")
 
-// errMissing means there is no archive copy.
-var errMissing = errors.New("the archive copy is missing")
+// errMissing means there is no destination copy.
+var errMissing = errors.New("the copy on the destination is missing")
 
 // Check is the outcome of verifying one file.
 type Check struct {
@@ -36,28 +37,28 @@ type Check struct {
 	// Defer is set when the source changed or vanished; the file will be
 	// tried again on the next run.
 	Defer string
-	// Err is set when the archive copy is missing or different.
+	// Err is set when the destination copy is missing or different.
 	Err error
 }
 
-// VerifyFile compares the source file f with its archive copy.
-func VerifyFile(ctx context.Context, source, machineDir string, f SourceFile) Check {
-	// SAFETY: invariant 4 ("archived" means verified).
-	sourceSum, deferReason, err := hashSource(ctx, filepath.Join(source, f.Path), f)
+// VerifyFile compares the source file f with its copy on the destination.
+func VerifyFile(ctx context.Context, s config.Settings, f SourceFile) Check {
+	// SAFETY: invariant 4 ("copied" means verified).
+	sourceSum, deferReason, err := hashSource(ctx, filepath.Join(s.Source, f.Path), f)
 	if err != nil || deferReason != "" {
 		return Check{Defer: deferReason, Err: err}
 	}
-	copyFile, err := archive.OpenRegular(machineDir, f.Path)
+	copyFile, err := destination.OpenRegular(s.Destination, s.DestRel(f.Path))
 	if errors.Is(err, os.ErrNotExist) {
 		return Check{Err: errMissing}
 	}
 	if err != nil {
-		return Check{Err: fmt.Errorf("opening the archive copy: %w", err)}
+		return Check{Err: fmt.Errorf("opening the copy on the destination: %w", err)}
 	}
 	defer copyFile.Close()
 	copySum, size, err := hashOpen(ctx, copyFile)
 	if err != nil {
-		return Check{Err: fmt.Errorf("reading the archive copy: %w", err)}
+		return Check{Err: fmt.Errorf("reading the copy on the destination: %w", err)}
 	}
 	if size != f.Size || copySum != sourceSum {
 		return Check{Err: errMismatch}
@@ -72,14 +73,14 @@ func hashSource(ctx context.Context, path string, f SourceFile) (sum, deferReaso
 	// are only ever opened read-only.
 	file, err := os.OpenFile(path, os.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if errors.Is(err, os.ErrNotExist) {
-		return "", archive.ReasonVanished, nil
+		return "", destination.ReasonVanished, nil
 	}
 	if err != nil {
-		return "", archive.ReasonChanged, nil
+		return "", destination.ReasonChanged, nil
 	}
 	defer file.Close()
 	if !sameAsScan(file, f) {
-		return "", archive.ReasonChanged, nil
+		return "", destination.ReasonChanged, nil
 	}
 	sum, _, err = hashOpen(ctx, file)
 	if err != nil {
@@ -91,10 +92,10 @@ func hashSource(ctx context.Context, path string, f SourceFile) (sum, deferReaso
 	// Check again: the file must not have changed while it was being read,
 	// nor been replaced by another file under the same name.
 	if !sameAsScan(file, f) {
-		return "", archive.ReasonChanged, nil
+		return "", destination.ReasonChanged, nil
 	}
 	if info, err := os.Lstat(path); err != nil || !sameIdentity(info, f) {
-		return "", archive.ReasonChanged, nil
+		return "", destination.ReasonChanged, nil
 	}
 	return sum, "", nil
 }

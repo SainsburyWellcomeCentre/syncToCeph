@@ -1,5 +1,5 @@
-// This file defines `synctoceph verify` (re-hash archived files) and
-// `synctoceph check-archived` (is it safe to delete these source files?).
+// This file defines `synctoceph verify` (re-hash copied files) and
+// `synctoceph check-copied` (is it safe to delete these source files?).
 package cli
 
 import (
@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/engine"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/scheduler"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/ui"
@@ -59,7 +59,7 @@ func newVerify(g *globals) *cobra.Command {
 			switch {
 			case interrupted:
 				return exitWith(130)
-			case len(rep.Differing)+len(rep.NotArchived)+len(rep.Changed)+len(rep.Errors) > 0:
+			case len(rep.Differing)+len(rep.NotCopied)+len(rep.Changed)+len(rep.Errors) > 0:
 				return exitWith(1)
 			}
 			return nil
@@ -69,12 +69,12 @@ func newVerify(g *globals) *cobra.Command {
 	return cmd
 }
 
-func newCheckArchived(g *globals) *cobra.Command {
+func newCheckCopied(g *globals) *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:   "check-archived PATH",
-		Short: ui.CheckArchivedShort,
-		Long:  ui.CheckArchivedLong,
+		Use:   "check-copied PATH",
+		Short: ui.CheckCopiedShort,
+		Long:  ui.CheckCopiedLong,
 		Args:  argsRange(1, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s, err := loadSettings(g, nil)
@@ -88,25 +88,25 @@ func newCheckArchived(g *globals) *cobra.Command {
 			if err := engine.CheckMount(s); err != nil {
 				return err
 			}
-			if info, err := os.Stat(s.Archive); err != nil || !info.IsDir() {
-				return ui.ArchiveMissing(s.Archive, err)
+			if info, err := os.Stat(s.Destination); err != nil || !info.IsDir() {
+				return ui.DestinationMissing(s.Destination, err)
 			}
-			files, err := engine.CheckArchived(context.Background(), s, sub)
+			files, err := engine.CheckCopied(context.Background(), s, sub)
 			if err != nil {
 				return err
 			}
 			safe := len(files) > 0
 			for _, f := range files {
-				safe = safe && f.Status == archive.StatusVerified
+				safe = safe && f.Status == destination.StatusVerified
 			}
 			if asJSON {
 				if files == nil {
-					files = []archive.FileStatus{}
+					files = []destination.FileStatus{}
 				}
 				writeJSON(cmd.OutOrStdout(), map[string]any{"schema_version": JSONSchemaVersion,
 					"profile": g.profile, "path": args[0], "all_verified": safe, "files": files})
 			} else {
-				ui.CheckArchivedReport(printer(cmd, g), args[0], files, safe, g.verbose)
+				ui.CheckCopiedReport(printer(cmd, g), args[0], files, safe, g.verbose)
 			}
 			if !safe {
 				return exitWith(1)

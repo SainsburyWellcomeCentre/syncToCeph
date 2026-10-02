@@ -1,46 +1,57 @@
 # init writes a config from flags, checking every answer.
-mkdir archive src
-exec synctoceph init --yes --machine-name scope-01 --source $WORK/src --archive $WORK/archive --schedule 02:00
+mkdir ceph src/LUMS0001 src/LUMS0002
+exec synctoceph init --yes --source $WORK/src --destination $WORK/ceph --subfolder behaviour --schedule 02:00
 stdout 'Saved .*home/.config/synctoceph/default.toml'
-stdout 'Data will be copied to .*archive/scope-01'
+stdout 'Each animal folder in the source will be copied to .*ceph/<animal>/behaviour'
+stdout 'Animal folders in the source \(2\): LUMS0001, LUMS0002'
+grep '^source        = ".*/src"' home/.config/synctoceph/default.toml
+grep '^destination   = ".*/ceph"' home/.config/synctoceph/default.toml
+grep '^subfolder     = "behaviour"' home/.config/synctoceph/default.toml
 grep '^at            = "02:00"' home/.config/synctoceph/default.toml
 grep '^exclude       = \["Thumbs.db", "desktop.ini", "~\$\*"\]' home/.config/synctoceph/default.toml
+grep '^exclude_hidden = true$' home/.config/synctoceph/default.toml
 exec synctoceph doctor
 stdout 'Schedule: daily at 02:00'
 
 # It never overwrites an existing config by accident.
-! exec synctoceph init --yes --source $WORK/src --archive $WORK/archive
+! exec synctoceph init --yes --source $WORK/src --destination $WORK/ceph --subfolder behaviour
 stderr 'a configuration already exists'
 
-# SAFETY: invariant 6: the archive folder must exist; init never creates it.
-! exec synctoceph init --yes --force --source $WORK/src --archive $WORK/missing
+# SAFETY: invariant 6: the destination folder must exist; init never creates it.
+! exec synctoceph init --yes --force --source $WORK/src --destination $WORK/missing --subfolder behaviour
 stderr 'does not exist'
 ! exists missing
+
+# There is no default subfolder: each machine chooses its own.
+! exec synctoceph --profile nosub init --yes --source $WORK/src --destination $WORK/ceph
+stderr 'the setting subfolder is missing'
 
 # Answers can be typed in; an empty answer takes the default shown.
 stdin answers.txt
 exec synctoceph --profile scope2 init
-stdout 'Machine name'
+stdout 'Subfolder for this machine'
 stdout 'Saved .*scope2.toml'
 grep '^interval      = "30m"' home/.config/synctoceph/scope2.toml
-grep '^machine_name  = "typed-name"' home/.config/synctoceph/scope2.toml
+grep '^subfolder     = "ephys"' home/.config/synctoceph/scope2.toml
 
 # A wrong answer is explained and asked again.
 stdin retry.txt
 exec synctoceph --profile scope3 init
 stdout 'does not exist or cannot be opened'
+stdout 'is not valid'
 stdout 'Saved .*scope3.toml'
 
 -- answers.txt --
-typed-name
 src
-archive
+ceph
+ephys
 none
 30m
 -- retry.txt --
-scope-3
 /no/such/folder
 src
-archive
+ceph
+not/valid
+histology
 
 4h

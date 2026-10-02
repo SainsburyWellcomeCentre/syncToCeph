@@ -1,5 +1,5 @@
 // This file defines `synctoceph status`: what is happening now, the last
-// result, and the files that are deferred or differ from the archive. It
+// result, and the files that are deferred or differ from their copy on ceph. It
 // only reads; it never creates the state folder.
 package cli
 
@@ -86,7 +86,7 @@ func statusAllProfiles(cmd *cobra.Command, g *globals, asJSON bool) error {
 			first, _, _ := strings.Cut(err.Error(), "\n")
 			row.Problem = first
 		} else {
-			row.Source, row.MachineDir = s.Source, s.MachineDir
+			row.Source, row.Target = s.Source, s.Target()
 		}
 		rows = append(rows, row)
 	}
@@ -146,7 +146,7 @@ func newStatus(g *globals) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&differing, "differing", false, "list files in the archive that differ from the source and were not replaced")
+	cmd.Flags().BoolVar(&differing, "differing", false, "list files on ceph that differ from the source and were not replaced")
 	cmd.Flags().BoolVar(&deferred, "deferred", false, "list files left for a later run")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print machine-readable JSON")
 	cmd.Flags().BoolVar(&everyProfile, "all-profiles", false, "show one line for every profile")

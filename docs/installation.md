@@ -84,9 +84,11 @@ synctoceph version       # check the version now installed
 Windows Task Scheduler tasks start the new program at their next run.
 
 What is kept: the configuration of every profile, the state and logs, the
-automatic runs, and of course the archive. If a new version adds a config
-setting, it has a default, so existing config files keep working;
-`synctoceph doctor` checks them. New settings are listed in the
+automatic runs, and of course the data on ceph. If a new version adds a
+config setting, it has a default, so existing config files keep working;
+`synctoceph doctor` checks them. (The exception is the change to the
+animal-first layout, which renamed settings; see the
+[changelog](../CHANGELOG.md).) New settings are listed in the
 [changelog](../CHANGELOG.md) and in [configuration.md](configuration.md).
 
 Other situations:
@@ -119,9 +121,9 @@ nothing. When it is not run in a terminal, it needs `--yes`. It refuses to
 delete the state while a run is still active (stop it first with
 `synctoceph --profile NAME stop`).
 
-Neither form ever touches the archive, including its `.syncToCeph/` folder
-(the verified-file record, run summaries and the history of replaced files),
-or the source data. Delete the cloned folder yourself afterwards if you no
+Neither form ever touches the destination on ceph, including its
+`.syncToCeph/` folder (the verified-file record, run summaries and the
+history of replaced files), or the source data. Delete the cloned folder yourself afterwards if you no
 longer need it.
 
 ---

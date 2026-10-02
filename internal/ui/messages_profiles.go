@@ -1,5 +1,5 @@
 // This file holds the wording for working with several profiles (several
-// config files, each with its own source and archive folder): the heading
+// config files, each with its own source, destination and subfolder): the heading
 // and closing summary of `run --all-profiles`, the table printed by
 // `status --all-profiles`, and the related problems. See messages.go for how
 // the message files are organised.
@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 )
 
 // NoProfiles: --all-profiles was given but no config file exists.
@@ -24,14 +24,14 @@ func NoProfiles(configDir string) error {
 // ProfileWithAllProfiles: both --profile and --all-profiles were given.
 const ProfileWithAllProfiles = "--profile and --all-profiles cannot be used together"
 
-// SharedMachineFolder warns that several profiles copy into one folder.
-func SharedMachineFolder(machineDir string, profiles []string) string {
+// SharedSubfolder warns that several profiles copy into one subfolder.
+func SharedSubfolder(target string, profiles []string) string {
 	sorted := slices.Sorted(slices.Values(profiles))
-	return fmt.Sprintf("Profiles %s all copy into %s.\n", strings.Join(sorted, ", "), machineDir) +
+	return fmt.Sprintf("Profiles %s all copy into %s.\n", strings.Join(sorted, ", "), target) +
 		"Files with the same path in their sources would meet in one place: in skip mode the\n" +
 		"later one is reported as differing; in replace mode it replaces the other (which is\n" +
-		"kept in history). If the sources are unrelated, give each profile its own\n" +
-		"machine_name (for example scope-01-ephys and scope-01-video)."
+		"kept in history). If the sources hold different kinds of data, give each profile its\n" +
+		"own subfolder (for example behaviour and video)."
 }
 
 // ProfileOutcome is one profile's line in the summary printed after
@@ -48,11 +48,11 @@ func ProfileHeading(p *Printer, profile string, n, total int) {
 }
 
 // BriefResult describes a run in a few words, for the summary of profiles.
-func BriefResult(s archive.RunSummary) string {
+func BriefResult(s destination.RunSummary) string {
 	switch {
-	case s.Result == archive.ResultFailed:
+	case s.Result == destination.ResultFailed:
 		return plural(s.ErrorCount, "problem") + "; see the report above"
-	case s.Result == archive.ResultInterrupted:
+	case s.Result == destination.ResultInterrupted:
 		return "stopped before it finished"
 	case s.DryRun:
 		return fmt.Sprintf("would copy %s (%s)", Files(s.Planned), Size(s.PlannedBytes))
@@ -80,28 +80,28 @@ func ProfilesSummary(p *Printer, outcomes []ProfileOutcome, total int, dryRun bo
 	counts := map[string]int{}
 	for _, o := range outcomes {
 		counts[o.Result]++
-		result := p.paint(resultStyle(o.Result), o.Result) + strings.Repeat(" ", len(archive.ResultInterrupted)-len(o.Result))
+		result := p.paint(resultStyle(o.Result), o.Result) + strings.Repeat(" ", len(destination.ResultInterrupted)-len(o.Result))
 		p.Detail(fmt.Sprintf("%-*s  %s  %s", width, o.Profile, result, o.Detail))
 	}
 	var result, text string
 	switch {
-	case counts[archive.ResultInterrupted] > 0:
-		result = archive.ResultInterrupted
+	case counts[destination.ResultInterrupted] > 0:
+		result = destination.ResultInterrupted
 		text = fmt.Sprintf("INTERRUPTED: stopped after %d of %s; the rest were not run.", len(outcomes), plural(total, "profile"))
-	case counts[archive.ResultFailed] > 0:
-		result = archive.ResultFailed
-		text = fmt.Sprintf("FAILED: %d of %s failed; see %s report above.", counts[archive.ResultFailed],
-			plural(total, "profile"), verb(counts[archive.ResultFailed], "its", "their"))
-	case counts[archive.ResultPartial] > 0:
-		result = archive.ResultPartial
+	case counts[destination.ResultFailed] > 0:
+		result = destination.ResultFailed
+		text = fmt.Sprintf("FAILED: %d of %s failed; see %s report above.", counts[destination.ResultFailed],
+			plural(total, "profile"), verb(counts[destination.ResultFailed], "its", "their"))
+	case counts[destination.ResultPartial] > 0:
+		result = destination.ResultPartial
 		text = fmt.Sprintf("PARTIAL: %d of %s left files for a later run. Do not delete those from the source.",
-			counts[archive.ResultPartial], plural(total, "profile"))
+			counts[destination.ResultPartial], plural(total, "profile"))
 	case dryRun:
-		result = archive.ResultOK
+		result = destination.ResultOK
 		text = fmt.Sprintf("OK (dry run): all %s checked; nothing was changed.", plural(total, "profile"))
 	default:
-		result = archive.ResultOK
-		text = fmt.Sprintf("OK: all %s finished; everything that needed copying is archived and verified.", plural(total, "profile"))
+		result = destination.ResultOK
+		text = fmt.Sprintf("OK: all %s finished; everything that needed copying is on ceph and verified.", plural(total, "profile"))
 	}
 	p.Line(MarkResult, text)
 	return result
@@ -109,17 +109,17 @@ func ProfilesSummary(p *Printer, outcomes []ProfileOutcome, total int, dryRun bo
 
 // ProfileRow is one line of `status --all-profiles`.
 type ProfileRow struct {
-	Profile    string
-	State      string // idle, running, waiting or stopped
-	LastRun    *archive.RunSummary
-	Source     string
-	MachineDir string
-	Problem    string // set instead of Source and MachineDir when the config has a problem
+	Profile string
+	State   string // idle, running, waiting or stopped
+	LastRun *destination.RunSummary
+	Source  string
+	Target  string // where data goes, as config.Settings.Target describes it
+	Problem string // set instead of Source and Target when the config has a problem
 }
 
 // ProfilesTable prints `status --all-profiles`: one line per profile.
 func ProfilesTable(p *Printer, rows []ProfileRow, now time.Time) {
-	table := [][]string{{"PROFILE", "STATE", "LAST RUN", "SOURCE -> ARCHIVE FOLDER"}}
+	table := [][]string{{"PROFILE", "STATE", "LAST RUN", "SOURCE -> DESTINATION"}}
 	for _, r := range rows {
 		last := "none yet"
 		if r.LastRun != nil {
@@ -129,7 +129,7 @@ func ProfilesTable(p *Printer, rows []ProfileRow, now time.Time) {
 			}
 			last += ", " + Ago(r.LastRun.FinishedAt, now)
 		}
-		where := r.Source + " -> " + r.MachineDir
+		where := r.Source + " -> " + r.Target
 		if r.Problem != "" {
 			where = "config problem: " + r.Problem
 		}

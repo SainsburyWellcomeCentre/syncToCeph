@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/config"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/scheduler"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/ui"
 )
@@ -56,8 +56,8 @@ func newRun(g *globals) *cobra.Command {
 			return exitWith(sum.ExitCode)
 		},
 	}
-	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, "show what would be copied; write nothing to the archive")
-	cmd.Flags().StringVar(&f.existing, "existing", "", "`MODE` for files already in the archive that differ: skip or replace (default: the config's existing setting, skip unless changed)")
+	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, "show what would be copied; write nothing to the destination")
+	cmd.Flags().StringVar(&f.existing, "existing", "", "`MODE` for files already on ceph that differ: skip or replace (default: the config's existing setting, skip unless changed)")
 	cmd.Flags().StringVar(&f.verify, "verify", "", "`MODE` for SHA-256 checks: new (only files copied in this run) or all (default: the config's verify setting, new unless changed)")
 	cmd.Flags().BoolVar(&f.allProfiles, "all-profiles", false, "run every profile, one after another")
 	return cmd
@@ -65,14 +65,14 @@ func newRun(g *globals) *cobra.Command {
 
 // runProfile runs one sync for profile and prints its progress and report.
 // An error means the run could not start (for example a config problem).
-func runProfile(cmd *cobra.Command, g *globals, f *runFlags, profile string) (archive.RunSummary, error) {
+func runProfile(cmd *cobra.Command, g *globals, f *runFlags, profile string) (destination.RunSummary, error) {
 	s, err := loadProfile(profile, f.apply(cmd))
 	if err != nil {
-		return archive.RunSummary{}, err
+		return destination.RunSummary{}, err
 	}
 	c, err := scheduler.Open(s, scheduler.ModeRun, Version)
 	if err != nil {
-		return archive.RunSummary{}, err
+		return destination.RunSummary{}, err
 	}
 	defer c.Close()
 	defer stopOnSignal(c)()
@@ -105,19 +105,19 @@ func runAllProfiles(cmd *cobra.Command, g *globals, f *runFlags) error {
 		if err != nil {
 			problems.Problem(err)
 			first, _, _ := strings.Cut(err.Error(), "\n")
-			outcomes = append(outcomes, ui.ProfileOutcome{Profile: profile, Result: archive.ResultFailed,
+			outcomes = append(outcomes, ui.ProfileOutcome{Profile: profile, Result: destination.ResultFailed,
 				Detail: fmt.Sprintf("could not start: %s", first)})
 			allDry = false
 			continue
 		}
 		outcomes = append(outcomes, ui.ProfileOutcome{Profile: profile, Result: sum.Result, Detail: ui.BriefResult(sum)})
 		allDry = allDry && sum.DryRun
-		if sum.Result == archive.ResultInterrupted {
+		if sum.Result == destination.ResultInterrupted {
 			break
 		}
 	}
 	result := ui.ProfilesSummary(p, outcomes, len(profiles), allDry)
-	return exitWith(archive.ExitCode(result))
+	return exitWith(destination.ExitCode(result))
 }
 
 func newSchedule(g *globals) *cobra.Command {
@@ -148,7 +148,7 @@ func newSchedule(g *globals) *cobra.Command {
 			v := &runView{p: p, everyFile: listEveryFile(cmd, g, s.Verbose)}
 			v.header("schedule", s)
 			v.attach(c)
-			c.AfterRun = func(sum archive.RunSummary) { v.report(sum, s.SettleTime); p.Blank() }
+			c.AfterRun = func(sum destination.RunSummary) { v.report(sum, s.SettleTime); p.Blank() }
 			c.Waiting = func(line string) { p.Plain(line) }
 			p.Plain(fmt.Sprintf("Scheduler started for profile %s (%s). Stop with Ctrl-C or: synctoceph stop", s.Profile, c.ScheduleText()))
 			return c.Loop(immediate)

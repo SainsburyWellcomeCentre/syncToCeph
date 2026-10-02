@@ -10,11 +10,13 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/ui"
 )
 
@@ -36,18 +38,23 @@ const minInterval = time.Second
 
 // Config mirrors the config file. Every field is a key in the TOML file.
 type Config struct {
-	MachineName  string   `toml:"machine_name"`
-	Source       string   `toml:"source"`
-	Archive      string   `toml:"archive"`
-	RequireMount string   `toml:"require_mount"`
-	Existing     string   `toml:"existing"`
-	Verify       string   `toml:"verify"`
-	SettleTime   string   `toml:"settle_time"`
-	Exclude      []string `toml:"exclude"`
-	Interval     string   `toml:"interval"`
-	At           string   `toml:"at"`
-	DryRun       bool     `toml:"dry_run"`
-	Verbose      bool     `toml:"verbose"`
+	Subfolder    string `toml:"subfolder"`
+	Source       string `toml:"source"`
+	Destination  string `toml:"destination"`
+	RequireMount string `toml:"require_mount"`
+	Existing     string `toml:"existing"`
+	Verify       string `toml:"verify"`
+	SettleTime   string `toml:"settle_time"`
+	// Exclude holds the exclude patterns, including HiddenPattern when
+	// exclude_hidden is on.
+	Exclude []string `toml:"exclude"`
+	// ExcludeHidden leaves out every file and folder whose name starts with
+	// "." (such as .git or .DS_Store), as if ".*" were in Exclude.
+	ExcludeHidden bool   `toml:"exclude_hidden"`
+	Interval      string `toml:"interval"`
+	At            string `toml:"at"`
+	DryRun        bool   `toml:"dry_run"`
+	Verbose       bool   `toml:"verbose"`
 }
 
 // Defaults returns the built-in values used for keys missing from the file.
@@ -57,8 +64,13 @@ func Defaults() Config {
 }
 
 // SuggestedExclude is what `init` writes for exclude: Windows thumbnail and
-// settings files, and Microsoft Office lock files.
+// settings files, and Microsoft Office lock files. `init` also turns on
+// exclude_hidden.
 var SuggestedExclude = []string{"Thumbs.db", "desktop.ini", "~$*"}
+
+// HiddenPattern is the exclude pattern that exclude_hidden adds: any name
+// starting with a dot.
+const HiddenPattern = ".*"
 
 // Load reads a config file on top of the defaults. Unknown keys are errors.
 func Load(file string) (Config, error) {
@@ -83,50 +95,59 @@ func Load(file string) (Config, error) {
 // Settings are the checked, ready-to-use values for one profile, after
 // command-line flags, the config file and defaults have been combined.
 type Settings struct {
-	Profile      string
-	MachineName  string
-	Source       string
-	Archive      string
-	MachineDir   string // Archive/MachineName: the only folder this machine writes to
+	Profile string
+	// Subfolder is this profile's folder inside every animal folder. Copies
+	// go only to <Destination>/<animal>/<Subfolder>/.
+	Subfolder   string
+	Source      string // holds one folder per animal
+	Destination string // holds one folder per animal, plus .syncToCeph/
+	// MetaDir is <Destination>/.syncToCeph/<Subfolder>: the verified-file
+	// record, history and run summaries of this subfolder.
+	MetaDir      string
 	RequireMount string
 	Existing     string
 	Verify       string
 	SettleTime   time.Duration
-	Exclude      []string
-	Interval     time.Duration
-	At           string
-	DryRun       bool
+	// Exclude holds the exclude patterns, including HiddenPattern when
+	// exclude_hidden is on.
+	Exclude  []string
+	Interval time.Duration
+	At       string
+	DryRun   bool
 	// Verbose lists every file as it is copied and verified. The -v and -q
 	// flags override it for one command.
 	Verbose  bool
 	StateDir string
 }
 
-// machinePattern keeps machine names safe as a single folder name.
-var machinePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$`)
+// subfolderPattern keeps subfolder names safe as a single folder name.
+var subfolderPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$`)
 
 // Resolve checks every value and returns the settings for a profile.
 func (c Config) Resolve(profile string) (Settings, error) {
 	s := Settings{Profile: profile, Existing: c.Existing, Verify: c.Verify,
-		Exclude: c.Exclude, At: c.At, DryRun: c.DryRun, Verbose: c.Verbose}
-	s.MachineName = c.MachineName
-	if s.MachineName == "" {
-		s.MachineName = DefaultMachineName()
+		Exclude: slices.Clone(c.Exclude), At: c.At, DryRun: c.DryRun, Verbose: c.Verbose}
+	if c.ExcludeHidden {
+		s.Exclude = append(s.Exclude, HiddenPattern)
 	}
-	if !machinePattern.MatchString(s.MachineName) {
-		return s, ui.BadSetting("machine_name", s.MachineName, ui.MachineNameRule)
+	s.Subfolder = c.Subfolder
+	if s.Subfolder == "" {
+		return s, ui.MissingSetting("subfolder")
+	}
+	if !subfolderPattern.MatchString(s.Subfolder) {
+		return s, ui.BadSetting("subfolder", s.Subfolder, ui.SubfolderRule)
 	}
 	var err error
 	if s.Source, err = absolutePath("source", c.Source, true); err != nil {
 		return s, err
 	}
-	if s.Archive, err = absolutePath("archive", c.Archive, true); err != nil {
+	if s.Destination, err = absolutePath("destination", c.Destination, true); err != nil {
 		return s, err
 	}
 	if s.RequireMount, err = absolutePath("require_mount", c.RequireMount, false); err != nil {
 		return s, err
 	}
-	s.MachineDir = filepath.Join(s.Archive, s.MachineName)
+	s.MetaDir = destination.MetaDir(s.Destination, s.Subfolder)
 	if s.Existing != ExistingSkip && s.Existing != ExistingReplace {
 		return s, ui.BadSetting("existing", s.Existing, "use skip or replace")
 	}
@@ -140,7 +161,7 @@ func (c Config) Resolve(profile string) (Settings, error) {
 		return s, err
 	}
 	for _, pattern := range s.Exclude {
-		if _, err := path.Match(pattern, ""); err != nil || pattern == "" {
+		if _, err := path.Match(pattern, ""); err != nil || strings.Trim(pattern, "/") == "" {
 			return s, ui.BadSetting("exclude", pattern, ui.ExcludeRule)
 		}
 	}
@@ -188,29 +209,12 @@ func absolutePath(key, value string, required bool) (string, error) {
 	return filepath.Clean(value), nil
 }
 
-// DefaultMachineName returns this computer's host name, changed where needed
-// so it is a valid machine_name.
-func DefaultMachineName() string {
-	host, err := os.Hostname()
-	if err != nil {
-		return "machine"
-	}
-	host = strings.Split(host, ".")[0]
-	var b strings.Builder
-	for _, r := range host {
-		if r < 128 && (r == '-' || r == '_' || r == '.' || ('a' <= r && r <= 'z') ||
-			('A' <= r && r <= 'Z') || ('0' <= r && r <= '9')) {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune('-')
-		}
-	}
-	name := strings.TrimLeft(b.String(), "-_.")
-	if len(name) > 63 {
-		name = name[:63]
-	}
-	if name == "" {
-		return "machine"
-	}
-	return name
+// DestRel returns where a source file goes, relative to the destination:
+// "LUMS0014/session1/a.bin" goes to "LUMS0014/<subfolder>/session1/a.bin".
+func (s Settings) DestRel(rel string) string { return destination.Rel(s.Subfolder, rel) }
+
+// Target describes where data goes, for messages, e.g.
+// "/mnt/ceph/project/<animal>/behaviour".
+func (s Settings) Target() string {
+	return filepath.Join(s.Destination, "<animal>", s.Subfolder)
 }

@@ -21,7 +21,7 @@ Set up, remove or check automatic runs
 
 ### SEE ALSO
 
-* [synctoceph](synctoceph.md)	 - Copy acquisition data to the lab archive, verified with SHA-256
+* [synctoceph](synctoceph.md)	 - Copy acquisition data to ceph with rsync, verified with SHA-256
 * [synctoceph service install](synctoceph_service_install.md)	 - Set up automatic runs
 * [synctoceph service status](synctoceph_service_status.md)	 - Show whether automatic runs are set up
 * [synctoceph service uninstall](synctoceph_service_uninstall.md)	 - Remove automatic runs

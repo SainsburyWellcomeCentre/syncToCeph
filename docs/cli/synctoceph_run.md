@@ -2,16 +2,18 @@
 
 ## synctoceph run
 
-Copy new files to the archive and verify them
+Copy new files to ceph and verify them
 
 ### Synopsis
 
-Runs one sync: scans the source, copies files that are not in the archive yet,
-and verifies every copy with SHA-256.
+Runs one sync: scans the source, copies files that are not on ceph yet (each
+animal folder into <destination>/<animal>/<subfolder>/), and verifies every
+copy with SHA-256. Files directly in the source, outside any animal folder,
+are not copied and are listed.
 
-Files already in the archive are left alone unless the config has
+Files already on ceph are left alone unless the config has
 existing = "replace" or --existing replace is given; then the old version is
-kept under .syncToCeph/history/<run-id>/.
+kept under <destination>/.syncToCeph/<subfolder>/history/<run-id>/.
 Files modified within settle_time, or that change during the run, are
 deferred to a later run.
 
@@ -33,8 +35,8 @@ synctoceph run [flags]
 
 ```
       --all-profiles    run every profile, one after another
-      --dry-run         show what would be copied; write nothing to the archive
-      --existing MODE   MODE for files already in the archive that differ: skip or replace (default: the config's existing setting, skip unless changed)
+      --dry-run         show what would be copied; write nothing to the destination
+      --existing MODE   MODE for files already on ceph that differ: skip or replace (default: the config's existing setting, skip unless changed)
   -h, --help            help for run
       --verify MODE     MODE for SHA-256 checks: new (only files copied in this run) or all (default: the config's verify setting, new unless changed)
 ```
@@ -50,5 +52,5 @@ synctoceph run [flags]
 
 ### SEE ALSO
 
-* [synctoceph](synctoceph.md)	 - Copy acquisition data to the lab archive, verified with SHA-256
+* [synctoceph](synctoceph.md)	 - Copy acquisition data to ceph with rsync, verified with SHA-256
 

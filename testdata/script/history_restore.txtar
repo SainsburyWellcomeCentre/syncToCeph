@@ -1,25 +1,26 @@
-# history restore brings back the previous version into a folder outside the archive.
-mkdir archive
+# history restore brings back the previous version into a folder outside the destination.
+mkdir ceph
 config existing=replace
 exec synctoceph run
-cp v2.txt src/data/a.txt
-age 1h src/data/a.txt
+cp v2.txt src/LUMS0001/data/a.txt
+age 1h src/LUMS0001/data/a.txt
 exec synctoceph run
 stdout 'Copied and verified 1 file'
 exec synctoceph history list --json
 stdout '"files": 1'
+exists ceph/.syncToCeph/behaviour/history
 # The run ID is the only folder in history; restore it with a helper script.
-exec sh -c 'synctoceph history restore "$(ls archive/scope-01/.syncToCeph/history)" data --to "$WORK/restored"'
+exec sh -c 'synctoceph history restore "$(ls ceph/.syncToCeph/behaviour/history)" LUMS0001/data --to "$WORK/restored"'
 stdout 'Restored 1 file'
-cmp restored/data/a.txt v1.txt
-# Existing files are never overwritten, and the archive is never a target.
-! exec sh -c 'synctoceph history restore "$(ls archive/scope-01/.syncToCeph/history)" data --to "$WORK/restored"'
+cmp restored/LUMS0001/data/a.txt v1.txt
+# Existing files are never overwritten, and the destination is never a target.
+! exec sh -c 'synctoceph history restore "$(ls ceph/.syncToCeph/behaviour/history)" LUMS0001/data --to "$WORK/restored"'
 stderr 'never overwritten'
-! exec sh -c 'synctoceph history restore "$(ls archive/scope-01/.syncToCeph/history)" data --to "$WORK/archive/elsewhere"'
-stderr 'inside the archive'
-cmp archive/scope-01/data/a.txt v2.txt
+! exec sh -c 'synctoceph history restore "$(ls ceph/.syncToCeph/behaviour/history)" LUMS0001/data --to "$WORK/ceph/elsewhere"'
+stderr 'inside the destination'
+cmp ceph/LUMS0001/behaviour/data/a.txt v2.txt
 
--- src/data/a.txt --
+-- src/LUMS0001/data/a.txt --
 version one
 -- v1.txt --
 version one

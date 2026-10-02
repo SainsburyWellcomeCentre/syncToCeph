@@ -1,26 +1,26 @@
-# Every machine writes run summaries into its own folder; fleet reads them all.
-mkdir archive
-config machine_name=scope-a
+# Every machine writes run summaries under .syncToCeph/<subfolder>/; fleet reads them all.
+mkdir ceph
+config subfolder=behaviour
 exec synctoceph run
-config profile=second machine_name=scope-b settle_time=10m
+config profile=second subfolder=ephys settle_time=10m
 ! exec synctoceph --profile second run
 stdout 'PARTIAL'
-exists archive/scope-a/.syncToCeph/runs/latest.json
-exists archive/scope-b/.syncToCeph/runs/latest.json
+exists ceph/.syncToCeph/behaviour/runs/latest.json
+exists ceph/.syncToCeph/ephys/runs/latest.json
 
 exec synctoceph fleet
-stdout '2 machines in .*archive:'
-stdout 'OK        scope-a: last run OK'
-stdout 'DEFERRED  scope-b: last run PARTIAL'
+stdout '2 subfolders in .*ceph:'
+stdout 'OK        behaviour: last run OK'
+stdout 'DEFERRED  ephys: last run PARTIAL'
 stdout '1 file deferred'
-exec synctoceph fleet --json --archive $WORK/archive
-stdout '"machine_name": "scope-a"'
+exec synctoceph fleet --json --destination $WORK/ceph
+stdout '"subfolder": "behaviour"'
 stdout '"deferred_count": 1'
 
-# A dry run writes no summary into the archive.
-config profile=third machine_name=scope-c
+# A dry run writes no summary to the destination.
+config profile=third subfolder=histology
 exec synctoceph --profile third run --dry-run
-! exists archive/scope-c
+! exists ceph/.syncToCeph/histology
 
--- src/a.txt --
+-- src/LUMS0001/a.txt --
 a

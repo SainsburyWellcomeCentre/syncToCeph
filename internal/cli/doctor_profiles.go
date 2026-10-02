@@ -1,6 +1,6 @@
 // This file holds the parts of `synctoceph doctor` that look at several
 // profiles: checking every profile at once (--all-profiles), and noticing
-// when two profiles copy into the same archive folder.
+// when two profiles copy into the same subfolder of the same destination.
 package cli
 
 import (
@@ -50,7 +50,7 @@ func doctorAllProfiles(cmd *cobra.Command, g *globals, asJSON bool) error {
 }
 
 // sharingProfiles returns the other profiles that copy into the same
-// machine folder as s. Profiles whose config has a problem are left out
+// subfolder of the same destination as s. Profiles whose config has a problem are left out
 // (doctor reports those on their own).
 func sharingProfiles(s config.Settings) []string {
 	profiles, err := config.Profiles()
@@ -62,7 +62,7 @@ func sharingProfiles(s config.Settings) []string {
 		if name == s.Profile {
 			continue
 		}
-		if other, err := loadProfile(name, nil); err == nil && other.MachineDir == s.MachineDir {
+		if other, err := loadProfile(name, nil); err == nil && other.MetaDir == s.MetaDir {
 			others = append(others, name)
 		}
 	}

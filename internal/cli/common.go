@@ -20,7 +20,7 @@ import (
 
 // JSONSchemaVersion is the version of every --json output format. Change it
 // (and the docs) when the meaning of a field changes.
-const JSONSchemaVersion = 1
+const JSONSchemaVersion = 2
 
 // loadSettings reads the config file of the profile chosen with --profile,
 // lets adjust apply command-line flags (which take precedence), and checks

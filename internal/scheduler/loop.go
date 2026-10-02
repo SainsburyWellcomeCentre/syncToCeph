@@ -2,7 +2,7 @@
 // Loop for the scheduler. After each run it updates the bookkeeping kept
 // between runs (when each deferred file was first deferred, files still
 // waiting for verification) and saves the run summary locally and in the
-// archive.
+// destination.
 package scheduler
 
 import (
@@ -10,8 +10,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/config"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/engine"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/state"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/ui"
@@ -23,8 +23,8 @@ import (
 const waitPoll = 10 * time.Second
 
 // RunOnce performs one sync and records its result.
-func (c *Controller) RunOnce() archive.RunSummary {
-	runID := archive.NewRunID(time.Now())
+func (c *Controller) RunOnce() destination.RunSummary {
+	runID := destination.NewRunID(time.Now())
 	c.Log.SetRun(runID)
 	defer c.Log.SetRun("")
 	c.mu.Lock()
@@ -45,7 +45,7 @@ func (c *Controller) RunOnce() archive.RunSummary {
 		c.status.DeferredSince = stampDeferred(sum.Deferred, c.status.DeferredSince, sum.FinishedAt)
 	}
 	sortDeferred(sum.Deferred)
-	if !sum.DryRun && sum.Result != archive.ResultInterrupted {
+	if !sum.DryRun && sum.Result != destination.ResultInterrupted {
 		sum.NewUnverified = sum.Unverified > 0 && sum.Unverified != c.status.UnverifiedReported
 		c.status.UnverifiedReported = sum.Unverified
 	}
@@ -58,8 +58,8 @@ func (c *Controller) RunOnce() archive.RunSummary {
 	if !sum.DryRun {
 		// A summary is written only once preflight has created the metadata
 		// folder; SAFETY: invariant 9: never for a dry run.
-		if info, err := os.Lstat(archive.RunsDir(c.Settings.MachineDir)); err == nil && info.IsDir() {
-			if err := archive.WriteRunSummary(c.Settings.MachineDir, sum); err != nil {
+		if info, err := os.Lstat(destination.RunsDir(c.Settings.MetaDir)); err == nil && info.IsDir() {
+			if err := destination.WriteRunSummary(c.Settings.MetaDir, sum); err != nil {
 				c.Log.Warn("%s", ui.SummaryNotWritten(err))
 			}
 		}
@@ -70,7 +70,7 @@ func (c *Controller) RunOnce() archive.RunSummary {
 
 // stampDeferred gives each deferred file the time it was first deferred,
 // keeping earlier times from previous runs.
-func stampDeferred(deferred []archive.DeferredFile, previous map[string]time.Time, now time.Time) map[string]time.Time {
+func stampDeferred(deferred []destination.DeferredFile, previous map[string]time.Time, now time.Time) map[string]time.Time {
 	since := map[string]time.Time{}
 	for i := range deferred {
 		first, ok := previous[deferred[i].Path]
@@ -84,7 +84,7 @@ func stampDeferred(deferred []archive.DeferredFile, previous map[string]time.Tim
 }
 
 // sortDeferred puts the longest-waiting files first, then sorts by path.
-func sortDeferred(d []archive.DeferredFile) {
+func sortDeferred(d []destination.DeferredFile) {
 	sort.SliceStable(d, func(i, j int) bool {
 		if !d[i].Since.Equal(d[j].Since) {
 			return d[i].Since.Before(d[j].Since)
@@ -176,9 +176,9 @@ func (c *Controller) waitUntil(due time.Time) bool {
 	}
 }
 
-// Verify re-hashes archived files under sub (see engine.VerifyTree).
-func (c *Controller) Verify(sub string, progress func(done, total int)) (archive.VerifyReport, error) {
-	runID := archive.NewRunID(time.Now())
+// Verify re-hashes copied files under sub (see engine.VerifyTree).
+func (c *Controller) Verify(sub string, progress func(done, total int)) (destination.VerifyReport, error) {
+	runID := destination.NewRunID(time.Now())
 	c.Log.SetRun(runID)
 	defer c.Log.SetRun("")
 	c.setPhase("verifying", "")

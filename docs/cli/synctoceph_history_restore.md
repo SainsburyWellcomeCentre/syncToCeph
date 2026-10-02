@@ -6,10 +6,10 @@ Copy a previous version out of the history
 
 ### Synopsis
 
-Copies the previous version of PATH (a file or folder, relative to the
-machine folder) kept by run RUN_ID into DIR, as DIR/PATH. DIR must be outside
-the archive, and existing files are never overwritten. Each copy is checked
-with SHA-256.
+Copies the previous version of PATH (a file or folder, given as its path in
+the source, such as LUMS0014/session1) kept by run RUN_ID into DIR, as
+DIR/PATH. DIR must be outside the destination, and existing files are never
+overwritten. Each copy is checked with SHA-256.
 
 ```
 synctoceph history restore RUN_ID PATH --to DIR [flags]
@@ -19,7 +19,7 @@ synctoceph history restore RUN_ID PATH --to DIR [flags]
 
 ```
   -h, --help     help for restore
-      --to DIR   restore into folder DIR (must be outside the archive)
+      --to DIR   restore into folder DIR (must be outside the destination)
 ```
 
 ### Options inherited from parent commands

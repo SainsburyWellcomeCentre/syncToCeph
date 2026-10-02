@@ -4,17 +4,18 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/platform"
 )
 
 // Questions asked by `synctoceph init`.
 const (
-	AskMachine  = "Machine name (its folder in the archive)"
-	AskSource   = "Source folder to copy from (e.g. /mnt/d/acquisition)"
-	AskArchive  = "Archive root folder on the lab share (e.g. /mnt/z/lab-archive)"
-	AskMount    = `Mount point that must be mounted ("none" for no check)`
-	AskSchedule = `Schedule: an interval (e.g. 4h), a daily time (e.g. 02:00), or "none"`
+	AskSource      = "Source folder holding one folder per animal (e.g. /mnt/d/luminoseData)"
+	AskDestination = "Destination folder on ceph that holds the animal folders (e.g. /mnt/ceph/project)"
+	AskSubfolder   = "Subfolder for this machine's data inside each animal folder (e.g. behaviour, ephys, histology)"
+	AskMount       = `Mount point that must be mounted ("none" for no check)`
+	AskSchedule    = `Schedule: an interval (e.g. 4h), a daily time (e.g. 02:00), or "none"`
 
 	ScheduleRule = `use an interval such as 30m or 4h, a daily time such as 02:00, or "none"`
 )
@@ -44,19 +45,38 @@ func ConfigNotSaved(file string, err error) error {
 		Fix: "check that you can write to " + file}
 }
 
-// ConfigSaved confirms init and lists the next steps.
-func ConfigSaved(file, machineDir, profile string) string {
+// ConfigSaved confirms init and lists the next steps. animals describes the
+// animal folders found in the source (see AnimalsFound).
+func ConfigSaved(file, target, animals, profile string) string {
 	flag := ""
 	if profile != "default" {
 		flag = " --profile " + profile
 	}
 	return fmt.Sprintf("Saved %s\n"+
-		"Data will be copied to %s\n"+
+		"Each animal folder in the source will be copied to %s\n"+
+		"%s\n"+
 		"Next steps:\n"+
-		"  synctoceph doctor%[3]s            check the setup\n"+
-		"  synctoceph run --dry-run%[3]s     see what would be copied\n"+
-		"  synctoceph run%[3]s               copy and verify\n"+
-		"  synctoceph service install%[3]s   run automatically on the schedule", file, machineDir, flag)
+		"  synctoceph doctor%[4]s            check the setup\n"+
+		"  synctoceph run --dry-run%[4]s     see what would be copied\n"+
+		"  synctoceph run%[4]s               copy and verify\n"+
+		"  synctoceph service install%[4]s   run automatically on the schedule", file, target, animals, flag)
+}
+
+// animalsShown is how many animal folder names AnimalsFound lists.
+const animalsShown = 5
+
+// AnimalsFound lists the folders found directly in the source, each of which
+// is copied as one animal, so a wrongly chosen source is easy to spot.
+func AnimalsFound(names []string) string {
+	if len(names) == 0 {
+		return "The source has no folders yet; each folder put directly in it is copied as one animal."
+	}
+	shown := names[:min(len(names), animalsShown)]
+	text := fmt.Sprintf("Animal folders in the source (%s): %s", Count(len(names)), strings.Join(shown, ", "))
+	if len(names) > animalsShown {
+		text += fmt.Sprintf(" and %d more", len(names)-animalsShown)
+	}
+	return text
 }
 
 // NoSchedule: schedule or service install without a schedule.
@@ -68,16 +88,16 @@ func NoSchedule(profile string) error {
 // Doctor lines.
 const (
 	DoctorNoMountCheck = "No mount check is configured (require_mount is empty).\n" +
-		"If the archive is on a network share, set require_mount to its mount point so synctoceph\n" +
-		"never writes to an empty folder when the share is not mounted."
-	DoctorWindowsDrive = "The archive is on a Windows drive (drvfs). See docs/troubleshooting.md for what\n" +
+		"If the destination is on a network share such as ceph, set require_mount to its mount\n" +
+		"point so synctoceph never writes to an empty folder when the share is not mounted."
+	DoctorWindowsDrive = "The destination is on a Windows drive (drvfs). See docs/troubleshooting.md for what\n" +
 		"was checked on such drives and the known limitations."
 	DoctorNoSchedule = "No schedule is set, so the service cannot be installed. Add interval or at to the config."
 )
 
 // DoctorConfigOK describes a valid config.
-func DoctorConfigOK(file, machineDir string) string {
-	return "Configuration " + file + " is valid; data goes to " + machineDir
+func DoctorConfigOK(file, target string) string {
+	return "Configuration " + file + " is valid; data goes to " + target
 }
 
 // DoctorRsyncOK describes a suitable rsync.
@@ -92,34 +112,35 @@ func MountCommands(mount string) string {
 			"  %[1]s: %[2]s drvfs defaults 0 0\n"+
 			"See docs/mounting.md.", letter, mount)
 	}
-	return fmt.Sprintf("Mount the lab share at %[1]s (ask your IT team for the server and share names), for example:\n"+
-		"  sudo mkdir -p %[1]s && sudo mount -t cifs //SERVER/SHARE %[1]s -o credentials=/root/.smbcred,uid=$(id -u),gid=$(id -g)\n"+
-		"To mount it at every start, add a line like this to /etc/fstab:\n"+
-		"  //SERVER/SHARE %[1]s cifs credentials=/root/.smbcred,uid=YOUR_UID,gid=YOUR_GID,nofail 0 0\n"+
-		"See docs/mounting.md.", mount)
+	return fmt.Sprintf("Mount the ceph share at %[1]s. Once, install the SMB tools and create the folder:\n"+
+		"  sudo apt install cifs-utils && sudo mkdir -p %[1]s\n"+
+		"Then mount it by hand (asks for your password), with SHARE and USER filled in:\n"+
+		"  sudo mount -t cifs //ceph-gw02.hpc.swc.ucl.ac.uk/SHARE %[1]s -o username=USER,domain=ad.swc.ucl.ac.uk,uid=$(id -u),gid=$(id -g),vers=3.0\n"+
+		"Or, to mount it at every start, add a line like this to /etc/fstab (with a credentials file):\n"+
+		"  //ceph-gw02.hpc.swc.ucl.ac.uk/SHARE %[1]s cifs credentials=/home/USER/.swc_credentials,uid=YOUR_UID,gid=YOUR_GID,_netdev,vers=3.0,nofail,x-systemd.automount 0 0\n"+
+		"docs/mounting.md explains every option and the credentials file.", mount)
 }
 
-// DoctorFilesystem describes the filesystem holding the archive.
-func DoctorFilesystem(archivePath, point, fstype, source string) string {
-	return fmt.Sprintf("%s is on %s (type %s, from %s)", archivePath, point, fstype, source)
+// DoctorFilesystem describes the filesystem holding the destination.
+func DoctorFilesystem(dest, point, fstype, source string) string {
+	return fmt.Sprintf("%s is on %s (type %s, from %s)", dest, point, fstype, source)
 }
 
-// DoctorSourceOK describes a readable source.
-func DoctorSourceOK(source string) string { return "Source " + source + " exists and is readable" }
+// DoctorSourceOK describes a readable source and the animal folders in it.
+func DoctorSourceOK(source, animals string) string {
+	return "Source " + source + " exists and is readable\n" + animals
+}
 
-// ArchiveNotWritable: the archive folder is read-only for this user.
-func ArchiveNotWritable(dir string) error {
+// DestinationNotWritable: the destination folder is read-only for this user.
+func DestinationNotWritable(dir string) error {
 	return &Problem{What: "you cannot write to " + dir,
 		Why: "copies would fail",
-		Fix: "check the share's permissions and mount options (e.g. uid/gid for cifs), or ask your IT team"}
+		Fix: "check the share's permissions and mount options (uid and gid for cifs, see docs/mounting.md), or ask your IT team"}
 }
 
-// DoctorArchiveOK describes a writable archive.
-func DoctorArchiveOK(machineDir string, exists bool) string {
-	if exists {
-		return "Archive folder " + machineDir + " exists and is writable"
-	}
-	return "Archive is writable; " + machineDir + " will be created by the first run"
+// DoctorDestinationOK describes a writable destination.
+func DoctorDestinationOK(dest string) string {
+	return "Destination " + dest + " exists and is writable"
 }
 
 // DoctorStateOK describes the state folder.

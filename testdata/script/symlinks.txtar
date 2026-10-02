@@ -1,35 +1,45 @@
 # SAFETY: invariant 8: symlinks and special files in the source are skipped and reported.
-mkdir archive outside
+mkdir ceph outside
 config
-symlink src/link-to-outside -> ../outside
-symlink src/link-to-file -> ../secret.txt
-mkfifo src/pipe
+symlink src/LUMS0001/link-to-outside -> ../../outside
+symlink src/LUMS0001/link-to-file -> ../../secret.txt
+symlink src/LUMS0099 -> ../outside
+mkfifo src/LUMS0001/pipe
 exec synctoceph run
 stdout 'Copied and verified 1 file'
-stdout '3 files skipped \(never copied\)'
-stdout 'link-to-outside   symlink \(never followed\)'
-stdout 'pipe   special file'
-! exists archive/scope-01/link-to-outside
-! exists archive/scope-01/link-to-file
-! exists archive/scope-01/pipe
+stdout '4 files skipped \(never copied\)'
+stdout 'LUMS0001/link-to-outside   symlink \(never followed\)'
+stdout 'LUMS0099   symlink \(never followed\)'
+stdout 'LUMS0001/pipe   special file'
+! exists ceph/LUMS0001/behaviour/link-to-outside
+! exists ceph/LUMS0001/behaviour/link-to-file
+! exists ceph/LUMS0001/behaviour/pipe
+! exists ceph/LUMS0099
 
-# SAFETY: invariant 8: a symlink inside the machine folder is never written through.
-mkdir src/data
-cp src/real.txt src/data/x.txt
-symlink archive/scope-01/data -> ../../outside
+# SAFETY: invariant 8: a symlink on the destination is never written through, whether
+# inside this machine's subfolder or as the animal folder itself.
+mkdir src/LUMS0001/data
+cp src/LUMS0001/real.txt src/LUMS0001/data/x.txt
+symlink ceph/LUMS0001/behaviour/data -> ../../../outside
+mkdir src/LUMS0002
+cp src/LUMS0001/real.txt src/LUMS0002/y.txt
+symlink ceph/LUMS0002 -> ../outside
 ! exec synctoceph run
-stdout 'data/x.txt was not copied: .*symlink'
+stdout 'LUMS0001/data/x.txt was not copied: .*symlink'
+stdout 'LUMS0002/y.txt was not copied: .*symlink'
 stdout 'RESULT    FAILED'
 ! exists outside/x.txt
+! exists outside/behaviour
 
-# A symlinked archive folder is refused before anything is written.
-rm archive/scope-01/data
-symlink archive-link -> archive
-config archive=$WORK/archive-link
+# A symlinked destination folder is refused before anything is written.
+rm ceph/LUMS0001/behaviour/data
+rm ceph/LUMS0002
+symlink ceph-link -> ceph
+config destination=$WORK/ceph-link
 ! exec synctoceph run
 stdout 'goes through a symlink'
 
--- src/real.txt --
+-- src/LUMS0001/real.txt --
 real
 -- secret.txt --
 must never be copied

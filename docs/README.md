@@ -3,14 +3,14 @@
 # synctoceph documentation
 
 New to synctoceph? Read the pages in this order: install it, configure it,
-make sure the archive share is mounted, then set up automatic runs. Every
+make sure ceph is mounted, then set up automatic runs. Every
 page links back here and on to the next one.
 
 | Page | What it covers |
 |---|---|
 | [Installation](installation.md) | Install, update to a new version, reinstall, uninstall, and remove everything (`--purge`) |
-| [Configuration](configuration.md) | The config file and its keys, several jobs on one computer (profiles), flags |
-| [Mounting the share](mounting.md) | Making the lab share available inside WSL or Linux |
+| [Configuration](configuration.md) | How data is organised (animal folder, then one subfolder per machine), the config file and its keys, profiles, flags |
+| [Mounting ceph](mounting.md) | Mounting ceph inside WSL or Linux with `/etc/fstab` and a credentials file, every option explained |
 | [Scheduling](scheduling.md) | Automatic runs with systemd or Windows Task Scheduler |
 | [Operations](operations.md) | Day-to-day use: status, logs, stopping, recovery, exit codes, JSON output |
 | [Troubleshooting](troubleshooting.md) | Every error message and what to do about it |

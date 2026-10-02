@@ -1,14 +1,18 @@
-# A first run copies every file and verifies it with SHA-256.
-mkdir archive
+# A first run copies every file and verifies it with SHA-256. Each animal
+# folder in the source goes into this machine's subfolder of that animal's
+# folder on ceph.
+mkdir ceph
 config
 snapshot src before.txt
 exec synctoceph run
 stdout 'Copied and verified 3 files'
-stdout 'RESULT    OK: everything that needed copying is archived and verified'
-cmp archive/scope-01/a.txt src/a.txt
-cmp 'archive/scope-01/session 1/stack_0001.tif' 'src/session 1/stack_0001.tif'
-exists archive/scope-01/.syncToCeph/manifest.jsonl
-exists archive/scope-01/.syncToCeph/runs/latest.json
+stdout 'RESULT    OK: everything that needed copying is on ceph and verified'
+cmp ceph/LUMS0001/behaviour/a.txt src/LUMS0001/a.txt
+cmp ceph/LUMS0002/behaviour/b.txt src/LUMS0002/b.txt
+cmp 'ceph/LUMS0001/behaviour/session 1/stack_0001.tif' 'src/LUMS0001/session 1/stack_0001.tif'
+exists ceph/.syncToCeph/behaviour/manifest.jsonl
+exists ceph/.syncToCeph/behaviour/runs/latest.json
+! exists ceph/LUMS0001/behaviour/.syncToCeph
 
 # SAFETY: invariant 2: the source is only read, never changed.
 snapshot src after.txt
@@ -16,7 +20,7 @@ cmp before.txt after.txt
 
 # A second run finds nothing new to copy.
 exec synctoceph run
-stdout 'Nothing new to copy; 3 files already archived and verified'
+stdout 'Nothing new to copy; 3 files already copied and verified'
 
 # status and logs describe the last run.
 exec synctoceph status
@@ -25,17 +29,18 @@ stdout 'Last successful sync'
 exec synctoceph logs -n 200
 stdout 'Run finished: OK'
 exec synctoceph status --json
-stdout '"schema_version": 1'
+stdout '"schema_version": 2'
 stdout '"result": "OK"'
+stdout '"subfolder": "behaviour"'
 
 # Nothing depends on the folder the command is run from.
 cd src
 exec synctoceph status
 stdout 'Last run:   OK'
 
--- src/a.txt --
+-- src/LUMS0001/a.txt --
 alpha
--- src/b.txt --
+-- src/LUMS0002/b.txt --
 beta
--- src/session 1/stack_0001.tif --
+-- src/LUMS0001/session 1/stack_0001.tif --
 pretend image data

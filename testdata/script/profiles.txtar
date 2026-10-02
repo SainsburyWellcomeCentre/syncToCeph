@@ -1,8 +1,8 @@
 # Several profiles: one config file each, so one computer can copy several
-# source folders to different places.
-mkdir archive other-archive
-config profile=ephys machine_name=scope-01-ephys source=$WORK/ephys
-config profile=video machine_name=scope-01-video source=$WORK/video archive=$WORK/other-archive
+# source folders, each into its own subfolder of the animal folders.
+mkdir ceph other-ceph
+config profile=ephys subfolder=ephys source=$WORK/ephys
+config profile=video subfolder=video source=$WORK/video destination=$WORK/other-ceph
 
 # run --all-profiles runs each profile in turn and sums up.
 exec synctoceph run --all-profiles
@@ -12,20 +12,20 @@ stdout '^==> Summary of 2 profiles$'
 stdout '^    ephys  OK           copied 1 file \(6 B\)$'
 stdout '^    video  OK           copied 1 file \(6 B\)$'
 stdout '^RESULT    OK: all 2 profiles finished'
-cmp archive/scope-01-ephys/spikes.bin ephys/spikes.bin
-cmp other-archive/scope-01-video/cam.avi video/cam.avi
+cmp ceph/LUMS0001/ephys/spikes.bin ephys/LUMS0001/spikes.bin
+cmp other-ceph/LUMS0001/video/cam.avi video/LUMS0001/cam.avi
 
 # The worst result decides the exit code: a deferred file gives PARTIAL (3).
-cp ephys/spikes.bin video/new.avi
-config profile=video machine_name=scope-01-video source=$WORK/video archive=$WORK/other-archive settle_time=1h
+cp ephys/LUMS0001/spikes.bin video/LUMS0001/new.avi
+config profile=video subfolder=video source=$WORK/video destination=$WORK/other-ceph settle_time=1h
 ! exec synctoceph run --all-profiles
 stdout '^    video  PARTIAL      nothing new to copy; 2 files left for a later run$'
 stdout '^RESULT    PARTIAL: 1 of 2 profiles left files for a later run'
 
 # A profile that fails, or cannot even start, is reported, and the others
 # still run (exit 1).
-config profile=broken machine_name=scope-01-x existing=overwrite
-config profile=missing machine_name=scope-01-y source=$WORK/missing
+config profile=broken subfolder=x existing=overwrite
+config profile=missing subfolder=y source=$WORK/missing
 ! exec synctoceph run --all-profiles
 stderr 'ERROR     the setting existing = "overwrite" is not valid'
 stdout '^    broken   FAILED       could not start: the setting existing'
@@ -42,8 +42,8 @@ stderr '--profile and --all-profiles cannot be used together'
 # status --all-profiles shows one line per profile.
 exec synctoceph status --all-profiles
 stdout '^PROFILE  STATE  LAST RUN'
-stdout '^ephys    idle   OK, .* ago  .*/ephys -> .*/archive/scope-01-ephys$'
-stdout '^video    idle   PARTIAL, .* ago  .*/video -> .*/other-archive/scope-01-video$'
+stdout '^ephys    idle   OK, .* ago  .*/ephys -> .*/ceph/<animal>/ephys$'
+stdout '^video    idle   PARTIAL, .* ago  .*/video -> .*/other-ceph/<animal>/video$'
 exec synctoceph status --all-profiles --json
 stdout '"profile": "ephys"'
 stdout '"profile": "video"'
@@ -56,23 +56,23 @@ stdout '^--- Profile ephys \(1 of 2\) ---$'
 stdout '^--- Profile video \(2 of 2\) ---$'
 stdout '^RESULT    No problems found'
 
-# Two profiles copying into the same archive folder get a note.
+# Two profiles copying into the same subfolder get a note.
 mkdir more
-exec synctoceph --profile more init --yes --machine-name scope-01-ephys --source $WORK/more --archive $WORK/archive --schedule none
-stdout 'NOTE      Profiles ephys, more all copy into .*archive/scope-01-ephys'
+exec synctoceph --profile more init --yes --subfolder ephys --source $WORK/more --destination $WORK/ceph --schedule none
+stdout 'NOTE      Profiles ephys, more all copy into .*ceph/<animal>/ephys'
 exec synctoceph --profile ephys doctor
 stdout 'NOTE      Profiles ephys, more all copy into'
 exec synctoceph --profile video doctor
 ! stdout 'all copy into'
 
 # service install --all-profiles skips profiles without a schedule.
-config profile=video machine_name=scope-01-video source=$WORK/video archive=$WORK/other-archive interval=4h
+config profile=video subfolder=video source=$WORK/video destination=$WORK/other-ceph interval=4h
 exec synctoceph service install --all-profiles --manager systemd --print
 stdout 'NOTE      Profile ephys was skipped: no schedule is set'
 stdout 'Would write .*synctoceph-video.service'
 
 # A second init for the same profile suggests adding another profile.
-! exec synctoceph --profile video init --yes --source $WORK/video --archive $WORK/archive
+! exec synctoceph --profile video init --yes --source $WORK/video --destination $WORK/ceph --subfolder video
 stderr 'synctoceph --profile NAME init'
 
 # With no config files at all, --all-profiles explains how to start.
@@ -81,7 +81,7 @@ rm home/.config/synctoceph
 stderr 'no profiles found'
 stderr 'synctoceph init'
 
--- ephys/spikes.bin --
+-- ephys/LUMS0001/spikes.bin --
 ephys
--- video/cam.avi --
+-- video/LUMS0001/cam.avi --
 video

@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/config"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/engine"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/platform"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/scheduler"
@@ -69,14 +69,14 @@ func diagnose(profile string) *doctor {
 		d.problem("config", cfgErr)
 	} else {
 		file, _ := config.ConfigFile(profile)
-		d.add("config", checkOK, ui.DoctorConfigOK(file, s.MachineDir))
+		d.add("config", checkOK, ui.DoctorConfigOK(file, s.Target()))
 	}
 	d.checkRsync()
 	if cfgErr == nil {
 		d.checkMount(s)
 		d.checkFolders(s)
 		if others := sharingProfiles(s); len(others) > 0 {
-			d.add("profiles", checkNote, ui.SharedMachineFolder(s.MachineDir, append([]string{profile}, others...)))
+			d.add("profiles", checkNote, ui.SharedSubfolder(s.Target(), append([]string{profile}, others...)))
 		}
 	}
 	d.checkState(profile)
@@ -135,7 +135,7 @@ func (d *doctor) checkMount(s config.Settings) {
 	if s.RequireMount == "" {
 		d.add("mount", checkNote, ui.DoctorNoMountCheck)
 	} else if !platform.IsMountPoint(mounts, s.RequireMount) {
-		d.add("mount", checkError, ui.Explain(ui.NotMounted(s.RequireMount, s.Archive))+"\n"+
+		d.add("mount", checkError, ui.Explain(ui.NotMounted(s.RequireMount, s.Destination))+"\n"+
 			ui.MountCommands(s.RequireMount))
 		return
 	} else if err := engine.CheckMount(s); err != nil {
@@ -144,42 +144,36 @@ func (d *doctor) checkMount(s config.Settings) {
 	}
 	target := s.RequireMount
 	if target == "" {
-		target = s.Archive
+		target = s.Destination
 		if real, err := filepath.EvalSymlinks(target); err == nil {
 			target = real
 		}
 	}
 	if m, ok := platform.MountFor(mounts, target); ok {
-		d.add("filesystem", checkOK, ui.DoctorFilesystem(s.Archive, m.Point, m.FSType, m.Source))
+		d.add("filesystem", checkOK, ui.DoctorFilesystem(s.Destination, m.Point, m.FSType, m.Source))
 		if platform.IsWindowsDrive(m) {
 			d.add("filesystem", checkNote, ui.DoctorWindowsDrive)
 		}
 	}
 }
 
-// checkFolders checks the source and archive folders and their separation.
+// checkFolders checks the source and destination folders and their separation.
 func (d *doctor) checkFolders(s config.Settings) {
 	if info, err := os.Stat(s.Source); err != nil || !info.IsDir() {
 		d.problem("source", ui.SourceMissing(s.Source, err))
 	} else if unix.Access(s.Source, unix.R_OK|unix.X_OK) != nil {
 		d.problem("source", ui.SourceUnreadable(s.Source, os.ErrPermission))
 	} else {
-		d.add("source", checkOK, ui.DoctorSourceOK(s.Source))
+		d.add("source", checkOK, ui.DoctorSourceOK(s.Source, ui.AnimalsFound(animalFolders(s.Source))))
 	}
-	if err := archive.NoSymlinks(s.MachineDir); err != nil {
-		d.problem("archive", ui.ArchiveSymlink(s.Archive, err))
-	} else if info, err := os.Stat(s.Archive); err != nil || !info.IsDir() {
-		d.problem("archive", ui.ArchiveMissing(s.Archive, err))
+	if err := destination.NoSymlinks(s.MetaDir); err != nil {
+		d.problem("destination", ui.DestinationSymlink(s.Destination, err))
+	} else if info, err := os.Stat(s.Destination); err != nil || !info.IsDir() {
+		d.problem("destination", ui.DestinationMissing(s.Destination, err))
+	} else if unix.Access(s.Destination, unix.W_OK|unix.X_OK) != nil {
+		d.problem("destination", ui.DestinationNotWritable(s.Destination))
 	} else {
-		writable := s.Archive
-		if info, err := os.Stat(s.MachineDir); err == nil && info.IsDir() {
-			writable = s.MachineDir
-		}
-		if unix.Access(writable, unix.W_OK|unix.X_OK) != nil {
-			d.problem("archive", ui.ArchiveNotWritable(writable))
-		} else {
-			d.add("archive", checkOK, ui.DoctorArchiveOK(s.MachineDir, writable == s.MachineDir))
-		}
+		d.add("destination", checkOK, ui.DoctorDestinationOK(s.Destination))
 	}
 	if err := engine.CheckSeparate(s); err != nil {
 		d.problem("paths", err)

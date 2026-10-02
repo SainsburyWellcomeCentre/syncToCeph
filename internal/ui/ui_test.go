@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 )
 
 func TestSize(t *testing.T) {
@@ -55,8 +55,8 @@ func TestPrinterMarkersAndQuiet(t *testing.T) {
 }
 
 func TestEveryProblemSaysWhatToDo(t *testing.T) {
-	problems := []error{NoConfig("f"), NotMounted("/mnt/z", "/mnt/z/a"), ArchiveMissing("/a", nil),
-		RsyncTooOld("/usr/bin/rsync", "3.1.3"), PathsOverlap("source", "/a", "archive", "/a/b"),
+	problems := []error{NoConfig("f"), NotMounted("/mnt/z", "/mnt/z/a"), DestinationMissing("/a", nil),
+		RsyncTooOld("/usr/bin/rsync", "3.1.3"), PathsOverlap("source", "/a", "destination", "/a/b"),
 		AlreadyRunning("default", "run", 42), StateNotLocal("/mnt/c/x", "a Windows drive")}
 	for _, err := range problems {
 		var p *Problem
@@ -92,13 +92,13 @@ func TestStepsAndColourByResult(t *testing.T) {
 }
 
 func TestScanAndPlanDetails(t *testing.T) {
-	s := archive.RunSummary{Scanned: 5, ScannedBytes: 2000, Excluded: 1,
-		Deferred: []archive.DeferredFile{{Path: "x"}}, Planned: 2, PlannedBytes: 1500, UpToDate: 2,
+	s := destination.RunSummary{Scanned: 5, ScannedBytes: 2000, Excluded: 1,
+		Deferred: []destination.DeferredFile{{Path: "x"}}, Planned: 2, PlannedBytes: 1500, UpToDate: 2,
 		Differing: []string{"d"}}
 	if got, want := ScanDetail(s), "Found 5 files; 4 ready (2.0 KB); 1 changed recently (left for a later run); 1 excluded"; got != want {
 		t.Errorf("ScanDetail = %q, want %q", got, want)
 	}
-	if got, want := PlanDetail(s), "2 files to copy (1.5 KB); 2 already archived and verified; 1 differs from the archive (left as it is)"; got != want {
+	if got, want := PlanDetail(s), "2 files to copy (1.5 KB); 2 already copied and verified; 1 differs from the copy on ceph (left as it is)"; got != want {
 		t.Errorf("PlanDetail = %q, want %q", got, want)
 	}
 }
@@ -108,10 +108,10 @@ func TestProfilesSummaryTakesTheWorstResult(t *testing.T) {
 		results []string
 		want    string
 	}{
-		{[]string{archive.ResultOK, archive.ResultOK}, archive.ResultOK},
-		{[]string{archive.ResultOK, archive.ResultPartial}, archive.ResultPartial},
-		{[]string{archive.ResultPartial, archive.ResultFailed}, archive.ResultFailed},
-		{[]string{archive.ResultFailed, archive.ResultInterrupted}, archive.ResultInterrupted},
+		{[]string{destination.ResultOK, destination.ResultOK}, destination.ResultOK},
+		{[]string{destination.ResultOK, destination.ResultPartial}, destination.ResultPartial},
+		{[]string{destination.ResultPartial, destination.ResultFailed}, destination.ResultFailed},
+		{[]string{destination.ResultFailed, destination.ResultInterrupted}, destination.ResultInterrupted},
 	}
 	for _, tt := range tests {
 		var outcomes []ProfileOutcome

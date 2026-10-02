@@ -1,6 +1,6 @@
 # service install writes a systemd user unit and enables it. Stand-in
 # systemctl and loginctl programs record how they were called.
-mkdir archive
+mkdir ceph
 chmod 755 bin/systemctl
 chmod 755 bin/loginctl
 env PATH=$WORK/bin:$PATH CALLS=$WORK/calls.txt USER=tester
@@ -40,7 +40,7 @@ config at=02:00
 exec synctoceph service install --manager task-scheduler --print
 stdout '/SC DAILY /ST 02:00'
 
--- src/a.txt --
+-- src/LUMS0001/a.txt --
 a
 -- bin/systemctl --
 #!/bin/sh

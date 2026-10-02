@@ -1,16 +1,17 @@
 // This file defines the run summary: the record of what one run did. The same
 // record is shown by `synctoceph status`, saved in the local status file, and
-// written into the archive (<machine folder>/.syncToCeph/runs/) so that
-// `synctoceph fleet` can report on every machine. Its JSON form is a contract
-// (see docs/operations.md); change schema_version if you change its meaning.
-package archive
+// written to the destination (<destination>/.syncToCeph/<subfolder>/runs/)
+// so that `synctoceph fleet` can report on every acquisition machine. Its
+// JSON form is a contract (see docs/operations.md); change schema_version if
+// you change its meaning.
+package destination
 
 import (
 	"time"
 )
 
 // SummarySchemaVersion is the version of the RunSummary JSON format.
-const SummarySchemaVersion = 1
+const SummarySchemaVersion = 2
 
 // The four possible results of a run.
 const (
@@ -71,12 +72,12 @@ type SkippedFile struct {
 type RunSummary struct {
 	SchemaVersion int       `json:"schema_version"`
 	RunID         string    `json:"run_id"`
-	Machine       string    `json:"machine_name"`
+	Subfolder     string    `json:"subfolder"`
 	Hostname      string    `json:"hostname"`
 	Profile       string    `json:"profile"`
 	Version       string    `json:"synctoceph_version"`
 	Source        string    `json:"source"`
-	Archive       string    `json:"archive"`
+	Destination   string    `json:"destination"`
 	StartedAt     time.Time `json:"started_at"`
 	FinishedAt    time.Time `json:"finished_at"`
 	DryRun        bool      `json:"dry_run"`
@@ -118,7 +119,7 @@ type RunSummary struct {
 }
 
 // summaryListLimit is how many entries of each file list are written into
-// the archive's run summaries (the counts are always complete).
+// the run summaries on the destination (the counts are always complete).
 const summaryListLimit = 100
 
 // Capped returns a copy whose file lists hold at most summaryListLimit

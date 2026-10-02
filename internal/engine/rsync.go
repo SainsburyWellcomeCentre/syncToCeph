@@ -18,17 +18,19 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/archive"
 	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/config"
+	"github.com/SainsburyWellcomeCentre/syncToCeph/internal/destination"
 )
 
 // KillGrace is how long rsync gets to exit after SIGINT before SIGKILL.
 const KillGrace = 30 * time.Second
 
 // RsyncArgs returns the rsync options (without the program name) for copying
-// the listed files from the source to the machine folder.
-func RsyncArgs(s config.Settings, historyDir string) []string {
-	// SAFETY: invariants 1 and 2 (nothing is ever deleted from the archive or
+// the listed files from one animal folder in the source (from) to that
+// animal's subfolder on the destination (to). existing is the existing
+// setting; historyDir is where replace mode keeps previous versions.
+func RsyncArgs(existing, historyDir, from, to string) []string {
+	// SAFETY: invariants 1 and 2 (synctoceph never deletes from the destination or
 	// the source): the options are fixed here. Never add --delete*,
 	// --remove-source-files, --inplace or --append, and never add options
 	// taken from config or user input.
@@ -38,11 +40,11 @@ func RsyncArgs(s config.Settings, historyDir string) []string {
 	args := []string{
 		"--files-from=-", "--from0",
 		"--times", "--omit-dir-times",
-		"--partial-dir=" + archive.PartialName,
+		"--partial-dir=" + destination.PartialName,
 		"--fsync",
 		"--itemize-changes",
 	}
-	if s.Existing == config.ExistingReplace {
+	if existing == config.ExistingReplace {
 		// SAFETY: invariant 3 (replaced files are kept): the old version is moved to
 		// the run's history folder before the new one takes its place.
 		// --ignore-times makes rsync copy every listed file, including ones
@@ -52,7 +54,7 @@ func RsyncArgs(s config.Settings, historyDir string) []string {
 		// Second line of defence for skip mode: never touch existing files.
 		args = append(args, "--ignore-existing")
 	}
-	return append(args, "--", s.Source+"/", s.MachineDir+"/")
+	return append(args, "--", from+"/", to+"/")
 }
 
 // rsyncEnv returns the environment for rsync: the current environment
@@ -89,7 +91,7 @@ type rsyncJob struct {
 func runRsync(ctx context.Context, job rsyncJob) (int, error) {
 	cmd := exec.Command(job.path, job.args...)
 	cmd.Env = job.env
-	// SAFETY: invariant 10 (one run per machine): rsync inherits the lock files, so the
+	// SAFETY: invariant 10 (one run per profile): rsync inherits the lock files, so the
 	// locks stay held while rsync runs, even if synctoceph is killed.
 	cmd.ExtraFiles = job.lockFiles
 	// SAFETY: invariant 11 (stopping is graceful): rsync gets its own process group so

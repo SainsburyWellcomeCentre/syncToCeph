@@ -8,10 +8,16 @@ and the README links to it for human developers.
 
 ## 1. What this project is
 
-`synctoceph` copies data from lab acquisition machines into the lab's Ceph archive. It
-never deletes from the archive. Every copied file is checked with SHA-256 before it is
-reported as archived. Each acquisition machine writes into its own folder on a Ceph
-share that is already mounted on that machine.
+`synctoceph` copies data from lab acquisition machines to the lab's ceph storage (or
+another mounted network drive) with rsync, once or on a schedule. It never deletes
+anything itself. Every copied file is checked with SHA-256 before it is reported as
+copied. Data is organised by animal: the source holds one folder per animal, and each
+animal folder goes to `<destination>/<animal>/<subfolder>/`, where each acquisition
+machine (profile) has its own `subfolder` (for example `behaviour`, `ephys`,
+`histology`). ceph is already mounted on each machine (cifs through `/etc/fstab`).
+
+**Wording:** say "ceph" (or "mounted network drive") and "destination", never
+"archive", in messages, help and docs.
 
 **Status:** the Go implementation of phases 1 to 5 is complete (section 10). The
 earlier Python implementation has been removed; it remains in the git history, and
@@ -65,7 +71,7 @@ real setup:
   directories, and set `HOME`, `XDG_CONFIG_HOME` and `XDG_STATE_HOME` to temporary
   paths. Go's own build and module caches are fine.
 - **Leave real data and real configuration alone during development.** Don't:
-  - read or write real acquisition or archive folders (e.g. `/mnt/z`, `/mnt/ceph`,
+  - read or write real acquisition folders or ceph (e.g. `/mnt/z`, `/mnt/ceph`,
     `/mnt/d`);
   - start real transfers;
   - install or enable services;
@@ -92,11 +98,11 @@ owner raises them again.
 | Language | Go, a single static binary (`CGO_ENABLED=0`) |
 | Transfer engine | **rsync 3.2+**, because it is tried and tested |
 | How machines reach storage | **Mounted drive only.** No SSH mode, and nothing runs on the Ceph machine. |
-| Archive layout | One folder per machine: `<archive>/<machine_name>/...` |
+| Destination layout | **Animal folder first** (owner, 2026-10-02): `<source>/<animal>/...` goes to `<destination>/<animal>/<subfolder>/...`. Each machine (profile) has its own required `subfolder`, so several machines can fill one animal folder. Records in `<destination>/.syncToCeph/<subfolder>/`. Replaces the earlier `<archive>/<machine_name>/` layout. |
 | Platforms | **Linux and Windows via WSL2.** macOS and native Windows are not planned for now (see section 10). |
 | Distribution | Public GitHub repo. Users `git clone`, then run `./install.sh`, `./update.sh` and `./uninstall.sh`. No package managers (Homebrew, apt/deb, snap). No separate offline install path; all machines have network access. |
 | Contributor guidance | This file plus a short "Changing the tool" section in the README. No `CONTRIBUTING.md`. |
-| Files already in the archive | Skipped by default. The user can choose to replace them (the old version is kept in history). |
+| Files already on the destination | Skipped by default. The user can choose to replace them (the old version is kept in history). |
 | Verification | Hash only files copied in this run by default. The user can choose to re-verify everything. |
 | Files changing during a run | Deferred **per file**, with a clear message. The run is not failed. |
 
@@ -115,7 +121,7 @@ Strengthening an invariant, or adding a new one, is welcome.
 
 **How the invariants are enforced in code:**
 - Code that enforces an invariant carries a `// SAFETY:` comment naming it, in the
-  form `// SAFETY: invariant 8 (symlinks on archive paths rejected)`, so anyone can
+  form `// SAFETY: invariant 8 (symlinks on destination paths rejected)`, so anyone can
   list every safety-critical line with one search (`grep -rn "SAFETY:" internal`).
   Tests for an invariant carry the same marker (`// SAFETY: invariant 4: ...`, or
   `# SAFETY: invariant 9: ...` in scenario files).
@@ -124,30 +130,34 @@ Strengthening an invariant, or adding a new one, is welcome.
 - A change that touches `SAFETY:` lines, or their tests, says so explicitly in its
   summary so it gets a careful review.
 
-1. **Nothing is ever deleted from the archive.** Never pass `--delete*`,
+1. **synctoceph never deletes anything on the destination.** Never pass `--delete*`,
    `--remove-source-files`, `--inplace` or `--append` to rsync, and never accept
    caller-supplied raw rsync options. (The option list is in
-   `internal/engine/rsync.go`, `RsyncArgs`.)
+   `internal/engine/rsync.go`, `RsyncArgs`.) Docs must not claim more than this:
+   people with write access to ceph can still delete files there.
 2. **Nothing is deleted from the source.** The tool only reads the source.
-3. **Replaced files are kept.** In `replace` mode, the previous archive version goes
-   to `<machine folder>/.syncToCeph/history/<run-id>/<relative path>`. History is
-   never pruned automatically.
-4. **"Archived" means verified.** A file is reported archived only after the SHA-256
-   of the source file and of the archive copy match. The source file's size,
+3. **Replaced files are kept.** In `replace` mode, the previous version on the
+   destination goes to `<destination>/.syncToCeph/<subfolder>/history/<run-id>/<path in
+   the source>`. History is never pruned automatically.
+4. **"Copied" means verified.** A file is reported copied only after the SHA-256
+   of the source file and of the destination copy match. The source file's size,
    modification time and inode must also be unchanged since the scan.
 5. **Unfinished copies never appear under the final name.** rsync writes partial files
    into `.syncToCeph-partial/`. A file under its final name is always complete, which
    is what makes skipping existing files safe.
-6. **The archive root is never created.** If the configured mount or archive folder is
-   missing, the run fails with an explanation. It must never write into an empty
-   mount point.
-7. **Source, archive and state are separate, non-nested folders.**
-8. **Symlinks on touched archive paths are rejected.** Source symlinks and special
-   files are skipped and reported. They are never followed.
-9. **A dry run writes nothing to the archive.**
-10. **One run per machine at a time.** A lock in the state folder guarantees this. The
+6. **The destination folder is never created.** If the configured mount or destination
+   folder is missing, the run fails with an explanation. It must never write into an
+   empty mount point. Folders below it (animal folders, subfolders, `.syncToCeph/`) are
+   created one level at a time, never with `MkdirAll`.
+7. **Source, destination and state are separate, non-nested folders.**
+8. **Symlinks on touched destination paths are rejected**, including an animal folder
+   and its subfolder. Source symlinks and special files are skipped and reported. They
+   are never followed.
+9. **A dry run writes nothing to the destination.**
+10. **One run per profile at a time.** A lock in the state folder guarantees this. The
     rsync child inherits the lock descriptor, so the lock stays held while rsync is
-    still running.
+    still running. A second lock in `.syncToCeph/<subfolder>/` stops two profiles on
+    one computer writing the same subfolder.
 11. **Stopping is graceful.** `stop` or SIGINT/SIGTERM sends SIGINT to rsync's process
     group, and SIGKILL after 30 seconds. An interrupted run is never reported as
     verified.
@@ -155,23 +165,35 @@ Strengthening an invariant, or adding a new one, is welcome.
 ## 5. Behaviour (specification)
 
 The full specification is in [docs/design.md](docs/design.md): deployment, files and
-locations, how a run works step by step, results and exit codes, the per-machine
-archive metadata, scheduling and process control. The safety model is in
+locations, how a run works step by step, results and exit codes, the records kept
+on the destination, scheduling and process control. The safety model is in
 [docs/safety-model.md](docs/safety-model.md). In short:
 
-- **A run:** preflight (mount, archive root, symlinks, separate paths, rsync
-  3.2.4+) -> scan the source (skip symlinks and special files, apply excludes,
-  defer files modified within `settle_time`) -> plan (new, matching, differing,
-  conflicts) -> rsync with a fixed option list and an explicit NUL-separated file
-  list -> SHA-256 verification of every copy -> run summary in the local state
-  folder and in `<machine folder>/.syncToCeph/runs/`.
+- **A run:** preflight (mount, destination, symlinks, separate paths, rsync
+  3.2.4+) -> scan the source (skip symlinks, special files and files outside an
+  animal folder, apply excludes, defer files modified within `settle_time`) -> plan
+  (new, matching, differing, conflicts, each compared with
+  `<destination>/<animal>/<subfolder>/...`) -> rsync once per animal folder, with a
+  fixed option list and an explicit NUL-separated file list -> SHA-256 verification
+  of every copy -> run summary in the local state folder and in
+  `<destination>/.syncToCeph/<subfolder>/runs/`.
 - **Results:** OK (exit 0), FAILED (1), usage error (2), PARTIAL (3, files
   deferred), INTERRUPTED (130).
 - **Locations:** config `~/.config/synctoceph/<profile>.toml`, state
-  `~/.local/state/synctoceph/<profile>/` (must be on a local Linux disk), archive
-  metadata `<archive>/<machine_name>/.syncToCeph/`.
+  `~/.local/state/synctoceph/<profile>/` (must be on a local Linux disk), records on
+  the destination `<destination>/.syncToCeph/<subfolder>/`. Paths in the records
+  are paths in the source (animal folder first).
+- **Config keys:** `source`, `destination`, `subfolder` (all required),
+  `require_mount`, `existing`, `verify`, `settle_time`, `exclude`, `exclude_hidden`,
+  `interval`, `at`, `dry_run`, `verbose`.
+- **Leaving things out:** `exclude` patterns are matched by synctoceph during the
+  scan (`excluded` in `internal/engine/scan.go`), never passed to rsync. A name
+  matches anywhere, a pattern with `/` is a path from the source, a trailing `/`
+  means folders only. `exclude_hidden = true` adds `.*` (in `config.Resolve`).
+  `.syncToCeph` and `.syncToCeph-partial` are always skipped, whatever the
+  settings. Excluded entries are never reported as safe by `check-copied`.
 - **Commands:** `init`, `doctor`, `run`, `schedule`, `status`, `logs`, `stop`,
-  `verify`, `check-archived`, `history list|restore`, `fleet`,
+  `verify`, `check-copied`, `history list|restore`, `fleet`,
   `service install|uninstall|status`, `completion`, `version`. The reference in
   [docs/cli/](docs/cli/synctoceph.md) is generated from the code.
 - **Profiles** (one config file per job) are chosen with `--profile NAME`;
@@ -184,7 +206,7 @@ archive metadata, scheduling and process control. The safety model is in
   the `verbose` setting, on by default) one line per file copied, verified or
   deferred. rsync's raw lines go to the log only.
 - **Uninstall:** `./uninstall.sh --purge` lists and confirms before deleting
-  config, state, logs and the build cache; it never touches the archive.
+  config, state, logs and the build cache; it never touches the destination.
 
 When behaviour changes, update `docs/design.md` (and the other docs it affects) in
 the same change.
@@ -199,10 +221,11 @@ internal/cli/                  one file per command (cobra); flag parsing and ou
                                scenario tests
 internal/config/               profiles, XDG paths, TOML load/validate/save
 internal/engine/               preflight, scan, plan, rsync runner, verify, deferral,
-                               check-archived and verify (audit.go), progress events
+                               check-copied and verify (audit.go), progress events
                                (event.go)
-internal/archive/              per-machine metadata: manifest, history, run summaries,
-                               fleet, safe archive paths; the RunSummary type
+internal/destination/          everything on the destination: the animal-first layout
+                               (layout.go), manifest, history, run summaries, fleet,
+                               safe destination paths; the RunSummary type
 internal/scheduler/            interval/daily timing; the controller (lock, log, control
                                socket, status) used by run, schedule and verify
 internal/state/                state lock, status.json, rotating logs, control socket
@@ -223,7 +246,7 @@ docs/                          see section 9; docs/README.md is the index
 ```
 
 Dependency direction (a package only imports packages to its left): `platform` <-
-`archive` <- `state` <- `ui` <- `config` <- `engine` <- `scheduler` <- `cli`;
+`destination` <- `state` <- `ui` <- `config` <- `engine` <- `scheduler` <- `cli`;
 `service` uses only `config` and `platform`.
 
 **Dependencies** (anything beyond these needs the owner's approval):
@@ -257,7 +280,7 @@ Go developer. Write for them.
 - **Give the user a fix.** User-facing errors are `ui.Problem` values (what
   happened, why it matters, what to do), made by functions in `internal/ui`.
 - **Keep wording in `internal/ui`.** Messages are grouped by topic in
-  `messages.go` (setup problems), `messages_archive.go`, `messages_run.go` (the run
+  `messages.go` (setup problems), `messages_destination.go`, `messages_run.go` (the run
   report), `messages_progress.go` (what a run shows while it works),
   `messages_profiles.go` (several profiles), `messages_status.go`,
   `messages_setup.go`, `messages_fleet.go`, and command help in `help.go`.
@@ -281,13 +304,13 @@ Go developer. Write for them.
   behavioural spec. They read like terminal sessions, so non-Go users can follow and
   request them:
   ```
-  # Files that already exist in the archive are skipped by default
+  # Files that already exist on ceph are skipped by default
   exec synctoceph run
   stdout 'Copied and verified 2 files'
-  cp new-version.txt src/a.txt
+  cp new-version.txt src/LUMS0001/a.txt
   exec synctoceph run
-  stdout '1 file already in the archive differs from the source and was NOT replaced'
-  cmp archive/scope-01/a.txt original-a.txt
+  stdout '1 file already on ceph differs from the source and was NOT replaced'
+  cmp ceph/LUMS0001/behaviour/a.txt original-a.txt
   ```
 - **Unit tests** are table-driven, for parsing, planning, scheduling (including
   daylight-saving cases) and formatting.
@@ -303,9 +326,11 @@ Go developer. Write for them.
 - **Scenario helpers.** Besides testscript's own commands, scenarios can use
   `config key=value...`, `age DURATION PATH...`, `waitfor PATH`,
   `waitlog [N] REGEXP`, `snapshot DIR FILE`, `killpid FILE` and `mkfifo PATH`
-  (documented in `internal/cli/script_test.go`). File names in a txtar archive are
-  expanded like arguments, so create names containing `$` with `cp` and single
-  quotes.
+  (documented in `internal/cli/script_test.go`). `config` defaults to
+  `source = $WORK/src`, `destination = $WORK/ceph` and `subfolder = "behaviour"`, so
+  put source files in an animal folder: `src/LUMS0001/a.txt` is copied to
+  `ceph/LUMS0001/behaviour/a.txt`. File names in a txtar archive are expanded like
+  arguments, so create names containing `$` with `cp` and single quotes.
 - **Every SAFETY invariant and every behaviour in section 5 has a test.** Port the
   Python tests' intent (section 11).
 - **Tests clean up every process they start.** Stand-in rsync programs write
@@ -326,8 +351,10 @@ Go developer. Write for them.
 ## 9. Documentation
 
 - **`README.md`** stays short (about two screens):
-  - what the tool does;
-  - the safety promises in three bullets;
+  - what the tool does, in a few plain bullets: copies with rsync from the
+    acquisition computer to ceph, once or on a schedule, organised by animal, every
+    copy checked with SHA-256, only adds files. No overstated guarantees (people
+    with write access to ceph can delete files there);
   - install (`git clone` then `./install.sh`);
   - a quickstart (`init`, then `doctor`, then `run --dry-run`, then `run`, then
     `service install`), and a pointer to profiles for several jobs;
@@ -347,10 +374,12 @@ Go developer. Write for them.
   - `design.md` (from section 5)
   - `installation.md` (install, update to a new version, reinstall, uninstall,
     purge)
-  - `configuration.md`
+  - `configuration.md` (including how data is organised by animal)
   - `cli/` (generated; never edit by hand)
   - `scheduling.md` (systemd, WSL, Task Scheduler)
-  - `mounting.md` (lab share inside WSL, Windows mapped drives, fstab)
+  - `mounting.md` (ceph with cifs: `cifs-utils`, the mount point, a manual mount, the
+    credentials file with username, password and domain, and every `/etc/fstab`
+    option explained; other network drives and Windows mapped drives)
   - `operations.md` (state, logs, recovery, exit codes)
   - `safety-model.md` (what is and is not guaranteed)
   - `troubleshooting.md` (keyed by exact error message)
@@ -385,7 +414,7 @@ Go developer. Write for them.
 |---|---|---|
 | 1: Foundation | `go.mod`, the layout from section 6, `scripts/check.sh`, CI, `install.sh` / `update.sh` / `uninstall.sh`. Write `docs/design.md` from section 5 and confirm the *(proposed)* items with the owner. | Done; owner confirmation pending (see below) |
 | 2: Core | config, `init`, `doctor`, `run`, `status`, `logs`, `stop`; scan, plan, rsync, verify, deferral, messages; state lock and control socket; scenario tests ported from the Python suite | Done |
-| 3: Archive features | verified-file record, `verify`, `check-archived`, `history list/restore`, run summaries, `fleet` | Done |
+| 3: Records on the destination | verified-file record, `verify`, `check-copied` (was `check-archived`), `history list/restore`, run summaries, `fleet` | Done |
 | 4: Scheduling | `schedule`, `service install/uninstall/status` for systemd and Task Scheduler on WSL; the real-WSL checks (drvfs behaviour, WSL scheduling) | Done; drvfs checks recorded in `docs/troubleshooting.md`; the two real-WSL scheduling checks are still open (`docs/scheduling.md`) |
 | 5: Finish | Complete the docs. With the owner's approval, remove the Python code and its docs. The owner tags `v1.0.0`. | Done except the `v1.0.0` tag |
 
@@ -416,7 +445,7 @@ when changing the code.
 **Behaviour kept:**
 - SHA-256 verification with checks that the source file is unchanged.
 - The per-run history folder.
-- Rejecting symlinks on archive paths, and file/directory type conflicts.
+- Rejecting symlinks on destination paths, and file/directory type conflicts.
 - Separate, non-nested paths.
 - The mount guard.
 - Atomic `status.json`.

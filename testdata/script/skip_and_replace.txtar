@@ -1,33 +1,34 @@
-# Files already in the archive are skipped by default, even if they differ.
-mkdir archive
+# Files already on ceph are skipped by default, even if they differ.
+mkdir ceph
 config
 exec synctoceph run
 stdout 'Copied and verified 1 file'
-cp new-version.txt src/a.txt
-age 1h src/a.txt
+cp new-version.txt src/LUMS0001/a.txt
+age 1h src/LUMS0001/a.txt
 exec synctoceph run
-stdout '1 file already in the archive differs from the source and was NOT replaced'
+stdout '1 file already on ceph differs from the source and was NOT replaced'
 stdout 'synctoceph run --existing replace'
-cmp archive/scope-01/a.txt original-a.txt
+cmp ceph/LUMS0001/behaviour/a.txt original-a.txt
 exec synctoceph status --differing
-stdout '^  a.txt$'
+stdout '^  LUMS0001/a.txt$'
 
 # SAFETY: invariant 3: replace mode copies the new version and keeps the old one.
 exec synctoceph run --existing replace
 stdout 'Copied and verified 1 file'
-cmp archive/scope-01/a.txt new-version.txt
+cmp ceph/LUMS0001/behaviour/a.txt new-version.txt
 exec synctoceph history list
 stdout '1 file'
 exec synctoceph history list --json
 stdout '"run_id": "[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}"'
+exec sh -c 'cmp ceph/.syncToCeph/behaviour/history/*/LUMS0001/a.txt original-a.txt'
 
 # Restore needs a real run ID and a target folder (see history_restore.txtar).
-! exec synctoceph history restore not-a-run a.txt --to restored
+! exec synctoceph history restore not-a-run LUMS0001/a.txt --to restored
 stderr '"not-a-run" is not a run ID'
-! exec synctoceph history restore 20260101T000000Z-abcdef a.txt
+! exec synctoceph history restore 20260101T000000Z-abcdef LUMS0001/a.txt
 stderr 'needs --to DIR'
 
--- src/a.txt --
+-- src/LUMS0001/a.txt --
 original
 -- original-a.txt --
 original
